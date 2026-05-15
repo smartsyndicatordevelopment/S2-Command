@@ -14,6 +14,8 @@ const chatRouter     = require('./routes/chat');
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production';
 
+app.set('trust proxy', 1); // trust Railway's load balancer for HTTPS detection
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
