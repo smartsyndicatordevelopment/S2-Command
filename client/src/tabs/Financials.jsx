@@ -84,21 +84,64 @@ function ReconciledSwitch({ value, onChange }) {
   );
 }
 
+function ExpenseRow({ line, div, max, suffix, depth }) {
+  const [open, setOpen] = useState(false);
+  const amt = line.amount / div;
+  const hasChildren = line.children?.length > 0;
+  const barOpacity = Math.max(0.25, 1 - depth * 0.25);
+
+  return (
+    <div>
+      <div
+        className={`flex items-center gap-3 py-0.5 ${hasChildren ? 'cursor-pointer group' : ''}`}
+        style={{ paddingLeft: `${depth * 14}px` }}
+        onClick={() => hasChildren && setOpen(o => !o)}
+      >
+        <span className="w-3 text-xs text-muted flex-shrink-0 text-center select-none">
+          {hasChildren ? (open ? '▾' : '▸') : ''}
+        </span>
+        <p className={`truncate flex-shrink-0 w-44 ${
+          depth === 0
+            ? `text-sm font-medium text-white${hasChildren ? ' group-hover:text-purple transition-colors' : ''}`
+            : depth === 1
+              ? `text-sm${hasChildren ? ' text-white font-medium group-hover:text-purple transition-colors' : ' text-dim'}`
+              : `text-xs${hasChildren ? ' text-dim font-medium group-hover:text-purple transition-colors' : ' text-muted'}`
+        }`}>
+          {line.name}
+        </p>
+        <div className={`flex-1 rounded-full overflow-hidden bg-border ${depth === 0 ? 'h-1.5' : 'h-1'}`}>
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${(amt / max) * 100}%`, backgroundColor: `rgba(92,63,244,${barOpacity})` }}
+          />
+        </div>
+        <p className={`flex-shrink-0 w-24 text-right ${depth === 0 ? 'text-sm text-white' : 'text-xs text-dim'}`}>
+          {fmtDollars(amt)}{suffix}
+        </p>
+      </div>
+      {hasChildren && open && (
+        <div className="border-l border-border/40 ml-5 pl-1 mt-0.5 mb-1.5">
+          {line.children.map((child, j) => (
+            <ExpenseRow key={j} line={child} div={div} max={max} suffix={suffix} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExpenseBreakdown({ lines, divisor, totalExpenses, label }) {
   const [view, setView] = useState('monthly');
-  const [expanded, setExpanded] = useState({});
   const div = view === 'monthly' ? divisor : 1;
   const suffix = view === 'monthly' ? '/mo' : '';
   const max = lines[0]?.amount / div || 1;
-
-  const toggle = (name) => setExpanded(e => ({ ...e, [name]: !e[name] }));
 
   return (
     <Card>
       <div className="flex items-center justify-between mb-5">
         <div>
           <p className="text-xs font-medium uppercase tracking-widest text-muted">{label}</p>
-          <p className="text-xs text-muted mt-0.5">QuickBooks line items</p>
+          <p className="text-xs text-muted mt-0.5">QuickBooks line items -- click categories to expand</p>
         </div>
         <div className="flex items-center gap-1 bg-bg rounded-lg p-1 border border-border">
           {['monthly', 'annual'].map(v => (
@@ -117,51 +160,10 @@ function ExpenseBreakdown({ lines, divisor, totalExpenses, label }) {
       {lines.length === 0 ? (
         <p className="text-sm text-muted">No expense data available</p>
       ) : (
-        <div className="space-y-2">
-          {lines.map((line, i) => {
-            const amt = line.amount / div;
-            const hasChildren = line.children?.length > 0;
-            const isOpen = expanded[line.name];
-            return (
-              <div key={i}>
-                <div
-                  className={`flex items-center gap-3 py-0.5 ${hasChildren ? 'cursor-pointer group' : ''}`}
-                  onClick={() => hasChildren && toggle(line.name)}
-                >
-                  <span className="w-3 text-xs text-muted flex-shrink-0 text-center select-none">
-                    {hasChildren ? (isOpen ? '▾' : '▸') : ''}
-                  </span>
-                  <p className={`text-sm w-44 truncate flex-shrink-0 ${hasChildren ? 'text-white font-medium group-hover:text-purple transition-colors' : 'text-dim'}`}>
-                    {line.name}
-                  </p>
-                  <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-purple" style={{ width: `${(amt / max) * 100}%` }} />
-                  </div>
-                  <p className="text-sm text-white w-24 text-right flex-shrink-0">
-                    {fmtDollars(amt)}{suffix}
-                  </p>
-                </div>
-                {hasChildren && isOpen && (
-                  <div className="ml-6 mt-1 mb-2 space-y-1.5 pl-3 border-l border-border/50">
-                    {line.children.map((child, j) => {
-                      const childAmt = child.amount / div;
-                      return (
-                        <div key={j} className="flex items-center gap-3">
-                          <p className="text-xs text-muted w-44 truncate flex-shrink-0">{child.name}</p>
-                          <div className="flex-1 h-1 bg-border rounded-full overflow-hidden">
-                            <div className="h-full rounded-full bg-purple/40" style={{ width: `${(childAmt / max) * 100}%` }} />
-                          </div>
-                          <p className="text-xs text-dim w-24 text-right flex-shrink-0">
-                            {fmtDollars(childAmt)}{suffix}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <div className="space-y-1.5">
+          {lines.map((line, i) => (
+            <ExpenseRow key={i} line={line} div={div} max={max} suffix={suffix} depth={0} />
+          ))}
           <div className="pt-3 border-t border-border flex justify-between">
             <p className="text-xs text-muted">Total Expenses</p>
             <p className="text-sm text-yellow">{fmtDollars(totalExpenses / div)}{suffix}</p>
@@ -222,30 +224,24 @@ export default function Financials() {
     'Net Income': Math.round(m.netIncome),
   }));
 
-  // Aggregate grouped expense lines across all T-12 months (store totals; divisor handles avg)
-  const t12GroupedMap = {};
-  months.forEach(m => {
-    (m.groupedExpenseLines || []).forEach(cat => {
-      const name = stripAccountNumber(cat.name);
-      if (!t12GroupedMap[name]) t12GroupedMap[name] = { name, amount: 0, childMap: {} };
-      t12GroupedMap[name].amount += cat.amount;
-      (cat.children || []).forEach(child => {
-        const cName = stripAccountNumber(child.name);
-        t12GroupedMap[name].childMap[cName] = (t12GroupedMap[name].childMap[cName] || 0) + child.amount;
-      });
+  // Recursively merge expense trees across all T-12 months (stores totals; divisor handles avg)
+  function mergeIntoTree(treeMap, items) {
+    (items || []).forEach(item => {
+      const name = stripAccountNumber(item.name);
+      if (!treeMap[name]) treeMap[name] = { name, amount: 0, children: {} };
+      treeMap[name].amount += item.amount;
+      mergeIntoTree(treeMap[name].children, item.children);
     });
-  });
-  const t12GroupedLines = Object.values(t12GroupedMap)
-    .map(cat => ({
-      name: cat.name,
-      amount: cat.amount,
-      children: Object.entries(cat.childMap)
-        .map(([name, total]) => ({ name, amount: total }))
-        .filter(c => c.amount > 0)
-        .sort((a, b) => b.amount - a.amount),
-    }))
-    .filter(e => e.amount > 0)
-    .sort((a, b) => b.amount - a.amount);
+  }
+  function treeMapToLines(treeMap) {
+    return Object.values(treeMap)
+      .map(node => ({ name: node.name, amount: node.amount, children: treeMapToLines(node.children) }))
+      .filter(e => e.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
+  }
+  const t12TreeMap = {};
+  months.forEach(m => mergeIntoTree(t12TreeMap, m.groupedExpenseLines || []));
+  const t12GroupedLines = treeMapToLines(t12TreeMap);
 
   const t12TotalExpenses = months.reduce((s, m) => s + m.totalExpenses, 0);
 

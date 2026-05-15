@@ -61,11 +61,11 @@ function extractCategoryRows(rows) {
     } else if (row?.type === 'Section') {
       const header = row?.Header?.ColData?.[0]?.value || '';
       const summaryAmt = parseAmount(row?.Summary?.ColData?.[1]?.value);
-      const children = extractDataRows(row?.Rows?.Row);
+      const children = extractCategoryRows(row?.Rows?.Row);
       if (header && summaryAmt) {
         items.push({ name: header, amount: summaryAmt, children });
       } else {
-        items.push(...children.map(c => ({ ...c, children: [] })));
+        items.push(...children);
       }
     }
   }
