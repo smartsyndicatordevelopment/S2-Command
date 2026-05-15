@@ -4,6 +4,8 @@ const session = require('express-session');
 const cors = require('cors');
 const path = require('path');
 
+const rateLimit = require('express-rate-limit');
+
 const authRouter = require('./routes/auth');
 const qbOAuthRouter = require('./routes/qbOAuth');
 const stripeRouter = require('./routes/stripe');
@@ -39,7 +41,17 @@ app.use(session({
 // Health check -- unauthenticated, used by Railway
 app.get('/health', (req, res) => res.json({ ok: true }));
 
+// Rate limit login attempts -- 5 tries per 15 minutes per IP
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts -- try again in 15 minutes' },
+});
+
 // Unauthenticated routes
+app.use('/auth/login', loginLimiter);
 app.use('/auth', authRouter);
 app.use('/auth', qbOAuthRouter); // /auth/quickbooks and /auth/quickbooks/callback
 
