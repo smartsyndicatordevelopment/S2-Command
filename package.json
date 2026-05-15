@@ -1,0 +1,27 @@
+{
+  "name": "s2-command",
+  "version": "1.0.0",
+  "description": "Smart Syndicator internal command center",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "cd client && npm run dev",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "build": "cd client && npm run build",
+    "install:all": "npm install && cd client && npm install"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "node-fetch": "^2.7.0",
+    "session-file-store": "^1.5.0",
+    "stripe": "^16.5.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

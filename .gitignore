@@ -1,0 +1,8 @@
+node_modules/
+client/node_modules/
+client/dist/
+.env
+server/tokens.json
+*.log
+.DS_Store
+sessions/
