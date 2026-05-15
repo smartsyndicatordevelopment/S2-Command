@@ -55,7 +55,7 @@ function parsePnL(data) {
   const rows = data?.Rows?.Row || [];
   let totalIncome = 0;
   let totalExpenses = 0;
-  let netIncome = 0;
+  let netIncome = null;
   const expenseLines = [];
 
   for (const row of rows) {
@@ -64,23 +64,29 @@ function parsePnL(data) {
     const header = row?.Header?.ColData?.[0]?.value || '';
     const summaryLabel = row?.Summary?.ColData?.[0]?.value || '';
     const summaryAmt = parseAmount(row?.Summary?.ColData?.[1]?.value);
-    const label = (header || summaryLabel).toLowerCase();
+    const label = (header || summaryLabel).toLowerCase().trim();
 
-    if (label.includes('income') || label.includes('revenue')) {
-      totalIncome = summaryAmt;
-    } else if (label.includes('expense') || label.includes('cost of')) {
+    // Net labels must be checked FIRST -- "net income" contains "income"
+    // and would incorrectly match the income branch otherwise.
+    if (label.startsWith('net ') || label === 'net income' || label === 'net profit' || label === 'net loss') {
+      if (label === 'net income' || label === 'net profit' || label === 'net loss') {
+        netIncome = summaryAmt;
+      }
+      // net operating income, net other income, etc. are intentionally skipped
+    } else if ((label.includes('income') || label.includes('revenue')) && !label.startsWith('total')) {
+      totalIncome += summaryAmt;
+    } else if ((label.includes('expense') || label.includes('cost of')) && !label.startsWith('total')) {
       totalExpenses += summaryAmt;
       expenseLines.push(...extractDataRows(row?.Rows?.Row));
-    } else if (label.includes('net income') || label.includes('net profit') || label.includes('net loss')) {
-      netIncome = summaryAmt;
     }
   }
 
-  if (netIncome === 0 && totalIncome !== 0) {
-    netIncome = totalIncome - totalExpenses;
-  }
-
-  return { totalIncome, totalExpenses, netIncome, expenseLines };
+  return {
+    totalIncome,
+    totalExpenses,
+    netIncome: netIncome !== null ? netIncome : totalIncome - totalExpenses,
+    expenseLines,
+  };
 }
 
 function qbConfigured() {
