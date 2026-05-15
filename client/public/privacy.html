@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy - Smart Syndicator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #ffffff;
+      color: #3A3A3A;
+      font-size: 15px;
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+    .header {
+      background: #0A0A0A;
+      padding: 24px 40px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-logo {
+      font-size: 18px;
+      font-weight: 600;
+      color: #ffffff;
+      letter-spacing: -0.02em;
+    }
+    .header-divider {
+      width: 1px;
+      height: 20px;
+      background: #3A3A3A;
+    }
+    .header-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #6B6B6B;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 60px 40px 80px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      color: #0A0A0A;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .meta {
+      font-size: 13px;
+      font-weight: 500;
+      color: #B0B0B0;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 48px;
+      padding-bottom: 24px;
+      border-bottom: 0.5px solid #E4E4E4;
+    }
+    h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #0A0A0A;
+      letter-spacing: -0.01em;
+      margin-top: 40px;
+      margin-bottom: 12px;
+    }
+    p {
+      margin-bottom: 16px;
+      color: #3A3A3A;
+    }
+    ul {
+      padding-left: 20px;
+      margin-bottom: 16px;
+    }
+    li {
+      margin-bottom: 8px;
+      color: #3A3A3A;
+    }
+    .footer {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 0.5px solid #E4E4E4;
+      font-size: 13px;
+      color: #B0B0B0;
+    }
+    a { color: #5A7A65; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <span class="header-logo">Smart Syndicator</span>
+    <div class="header-divider"></div>
+    <span class="header-label">Legal</span>
+  </div>
+
+  <div class="container">
+    <h1>Privacy Policy</h1>
+    <div class="meta">Effective Date: May 15, 2025 &nbsp;&middot;&nbsp; Version 1.0</div>
+
+    <p>Smart Syndicator LLC ("Company," "we," "us," or "our") operates the S2 Command internal business application ("Software"). This Privacy Policy describes how we collect, use, and protect information in connection with the Software.</p>
+
+    <p>The Software is an internal tool restricted to authorized personnel of Smart Syndicator LLC. It is not a public-facing consumer application.</p>
+
+    <h2>1. Information We Collect</h2>
+    <p>In operating the Software, we process the following categories of information:</p>
+    <ul>
+      <li><strong>Authentication data:</strong> Login credentials (username and password) used to access the Software</li>
+      <li><strong>Session data:</strong> Temporary session tokens maintained in server memory for the duration of an active session</li>
+      <li><strong>Business operational data:</strong> Financial records, subscription data, and customer information accessed through integrations with QuickBooks and Stripe</li>
+      <li><strong>Usage data:</strong> Basic server logs including IP addresses and timestamps, retained for security and diagnostic purposes</li>
+    </ul>
+
+    <h2>2. How We Use Information</h2>
+    <p>Information processed through the Software is used exclusively for:</p>
+    <ul>
+      <li>Authenticating and authorizing access to the Software</li>
+      <li>Displaying business operational data to authorized users</li>
+      <li>Maintaining security and detecting unauthorized access attempts</li>
+      <li>Diagnosing technical issues and maintaining the reliability of the Software</li>
+    </ul>
+    <p>We do not use this information for marketing, advertising, or any purpose outside of internal business operations.</p>
+
+    <h2>3. Third-Party Integrations</h2>
+    <p>The Software connects to the following third-party services to retrieve and display business data:</p>
+    <ul>
+      <li><strong>Intuit QuickBooks:</strong> Financial accounting data is accessed via the QuickBooks API using OAuth 2.0 authorization. Data is retrieved in real time and is not stored permanently by the Software. Intuit's privacy policy governs their handling of this data.</li>
+      <li><strong>Stripe, Inc.:</strong> Subscription and payment data is accessed via the Stripe API. Data is retrieved in real time and is not stored permanently by the Software. Stripe's privacy policy governs their handling of this data.</li>
+    </ul>
+    <p>Smart Syndicator LLC does not sell, rent, or share data obtained from these integrations with any third party outside of the authorized personnel operating the Software.</p>
+
+    <h2>4. Data Storage and Retention</h2>
+    <p>The Software does not maintain a persistent database of business data. All financial and operational data is fetched live from third-party APIs at the time of access and is not stored on our servers beyond the active request. Session authentication tokens are held in server memory only and are cleared when a session expires or the server restarts.</p>
+    <p>Server access logs may be retained for up to 30 days for security purposes.</p>
+
+    <h2>5. Data Security</h2>
+    <p>We implement reasonable technical and organizational measures to protect data processed through the Software, including:</p>
+    <ul>
+      <li>HTTPS encryption for all data in transit</li>
+      <li>Session-based authentication with secure, HTTP-only cookies</li>
+      <li>Rate limiting on authentication endpoints to prevent brute-force attacks</li>
+      <li>Access controls restricting Software access to authorized personnel only</li>
+      <li>Search engine exclusion via robots.txt to prevent public indexing</li>
+    </ul>
+    <p>No method of transmission over the Internet is 100% secure. We cannot guarantee absolute security, but we take commercially reasonable steps to protect information.</p>
+
+    <h2>6. Access Controls</h2>
+    <p>Access to the Software is restricted to authorized employees and contractors of Smart Syndicator LLC. Access credentials are managed by Smart Syndicator LLC administrators. Unauthorized access is prohibited and may violate applicable law.</p>
+
+    <h2>7. No Sale of Data</h2>
+    <p>Smart Syndicator LLC does not sell, trade, or otherwise transfer any information accessed through the Software to third parties for commercial purposes.</p>
+
+    <h2>8. Changes to This Policy</h2>
+    <p>We may update this Privacy Policy from time to time. The effective date at the top of this page reflects the date of the most recent revision. Continued use of the Software following any changes constitutes acceptance of the revised policy.</p>
+
+    <h2>9. Contact Us</h2>
+    <p>If you have questions or concerns about this Privacy Policy or our data practices, please contact us at:</p>
+    <p>
+      Smart Syndicator LLC<br>
+      <a href="mailto:operations@smartsyndicator.com">operations@smartsyndicator.com</a>
+    </p>
+
+    <div class="footer">
+      &copy; 2025 Smart Syndicator LLC. All rights reserved.
+    </div>
+  </div>
+
+</body>
+</html>
