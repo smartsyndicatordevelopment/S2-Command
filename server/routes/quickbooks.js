@@ -145,6 +145,54 @@ router.get('/pnl', async (req, res) => {
   }
 });
 
+router.get('/pnl/monthly', async (req, res) => {
+  if (!qbConfigured()) return res.json({ months: [], notConfigured: true });
+
+  const reconciled = req.query.reconciled === 'true';
+  const now = new Date();
+
+  // Build 12 month windows. In reconciled mode use only complete months.
+  const months = [];
+  const count = 12;
+  for (let i = count - 1; i >= 0; i--) {
+    const first = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+    const isCurrent = i === 0;
+    const isMTD = isCurrent && !reconciled;
+
+    // In reconciled mode skip the current in-progress month
+    if (isCurrent && reconciled) continue;
+
+    const startDate = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-01`;
+    const endDate = isMTD
+      ? now.toISOString().split('T')[0]
+      : `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+
+    const label = first.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    months.push({ startDate, endDate, label, isMTD });
+  }
+
+  try {
+    const results = await Promise.all(
+      months.map(async ({ startDate, endDate, label, isMTD }) => {
+        try {
+          const data = await withRetry(() =>
+            qbGet(`/reports/ProfitAndLoss?start_date=${startDate}&end_date=${endDate}&accounting_method=Cash`)
+          );
+          return { label, isMTD, startDate, endDate, ...parsePnL(data) };
+        } catch (err) {
+          console.error(`QB monthly P&L ${label} error:`, err.message);
+          return { label, isMTD, startDate, endDate, totalIncome: 0, totalExpenses: 0, netIncome: 0, expenseLines: [] };
+        }
+      })
+    );
+    res.json({ months: results });
+  } catch (err) {
+    console.error('QB /pnl/monthly error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch monthly P&L data' });
+  }
+});
+
 router.get('/qb/status', (req, res) => {
   const cache = getTokenCache();
   res.json({

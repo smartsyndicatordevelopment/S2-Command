@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 export function useApi(url) {
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!url);
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
 
   const fetchData = useCallback(async () => {
+    if (!url) return;
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
@@ -42,9 +43,15 @@ export function useApi(url) {
   }, [url]);
 
   useEffect(() => {
+    if (!url) {
+      setData(null);
+      setLoading(false);
+      setError(null);
+      return () => {};
+    }
     fetchData();
     return () => abortRef.current?.abort();
-  }, [fetchData]);
+  }, [fetchData, url]);
 
   return { data, loading, error, refetch: fetchData };
 }
