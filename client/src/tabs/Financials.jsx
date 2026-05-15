@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   ComposedChart, BarChart, Bar, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine, CartesianGrid,
@@ -86,16 +86,31 @@ function ReconciledSwitch({ value, onChange }) {
 
 function ExpenseRow({ line, div, max, suffix, depth }) {
   const [open, setOpen] = useState(false);
+  const [tipPos, setTipPos] = useState(null);
+  const rowRef = useRef(null);
   const amt = line.amount / div;
   const hasChildren = line.children?.length > 0;
   const barOpacity = Math.max(0.25, 1 - depth * 0.25);
 
+  const onMouseEnter = () => {
+    if (!hasChildren) return;
+    const rect = rowRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const tipH = Math.min(line.children.length * 22 + 44, 300);
+    const y = rect.bottom + 6 + tipH > window.innerHeight ? rect.top - tipH - 6 : rect.bottom + 6;
+    setTipPos({ x: rect.left, y });
+  };
+  const onMouseLeave = () => setTipPos(null);
+
   return (
     <div>
       <div
+        ref={rowRef}
         className={`flex items-center gap-3 py-0.5 ${hasChildren ? 'cursor-pointer group' : ''}`}
         style={{ paddingLeft: `${depth * 14}px` }}
         onClick={() => hasChildren && setOpen(o => !o)}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
       >
         <span className="w-3 text-xs text-muted flex-shrink-0 text-center select-none">
           {hasChildren ? (open ? '▾' : '▸') : ''}
@@ -103,9 +118,7 @@ function ExpenseRow({ line, div, max, suffix, depth }) {
         <p className={`truncate flex-shrink-0 w-44 ${
           depth === 0
             ? `text-sm font-medium text-white${hasChildren ? ' group-hover:text-purple transition-colors' : ''}`
-            : depth === 1
-              ? `text-sm${hasChildren ? ' text-white font-medium group-hover:text-purple transition-colors' : ' text-dim'}`
-              : `text-xs${hasChildren ? ' text-dim font-medium group-hover:text-purple transition-colors' : ' text-muted'}`
+            : `text-sm${hasChildren ? ' text-white font-medium group-hover:text-purple transition-colors' : ' text-dim'}`
         }`}>
           {line.name}
         </p>
@@ -119,6 +132,24 @@ function ExpenseRow({ line, div, max, suffix, depth }) {
           {fmtDollars(amt)}{suffix}
         </p>
       </div>
+
+      {tipPos && (
+        <div
+          style={{ position: 'fixed', left: tipPos.x, top: tipPos.y, zIndex: 9999, maxHeight: 300 }}
+          className="bg-[#13131f] border border-border rounded-lg shadow-xl p-3 min-w-[220px] max-w-[300px] pointer-events-none overflow-y-auto"
+        >
+          <p className="text-[10px] font-medium text-muted uppercase tracking-widest mb-2.5">{line.name}</p>
+          <div className="space-y-1.5">
+            {line.children.map((child, i) => (
+              <div key={i} className="flex justify-between gap-4 items-baseline">
+                <p className="text-xs text-dim truncate">{child.name}</p>
+                <p className="text-xs text-white flex-shrink-0">{fmtDollars(child.amount / div)}{suffix}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {hasChildren && open && (
         <div className="border-l border-border/40 ml-5 pl-1 mt-0.5 mb-1.5">
           {line.children.map((child, j) => (
