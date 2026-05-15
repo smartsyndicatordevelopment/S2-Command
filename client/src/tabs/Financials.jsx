@@ -294,7 +294,7 @@ export default function Financials() {
                     <YAxis tickFormatter={fmtK} tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
                     <Tooltip content={<AnnualTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
                     <Bar dataKey="Income" fill="#5c3ff4" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Expenses" fill="#2a2a3a" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Expenses" fill="#f59e0b" radius={[3, 3, 0, 0]} />
                     <Bar dataKey="Net Income" radius={[3, 3, 0, 0]}>
                       {annualChartData.map((entry, i) => (
                         <Cell key={i} fill={entry['Net Income'] >= 0 ? '#22c55e' : '#ef4444'} />
@@ -303,7 +303,7 @@ export default function Financials() {
                   </BarChart>
                 </ResponsiveContainer>
                 <div className="flex items-center gap-5 mt-2">
-                  {[['Income', '#5c3ff4'], ['Expenses', '#2a2a3a'], ['Net Income', '#22c55e']].map(([l, color]) => (
+                  {[['Income', '#5c3ff4'], ['Expenses', '#f59e0b'], ['Net Income', '#22c55e']].map(([l, color]) => (
                     <div key={l} className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
                       <span className="text-xs text-muted">{l}</span>
@@ -385,7 +385,7 @@ export default function Financials() {
                     <YAxis tickFormatter={fmtK} tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
                     <Tooltip content={<MonthlyTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
                     <Bar dataKey="Income" name="Income" fill="#5c3ff4" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Expenses" name="Expenses" fill="#2a2a3a" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Expenses" name="Expenses" fill="#f59e0b" radius={[3, 3, 0, 0]} />
                     <Bar dataKey="Net Income" name="Net Income" radius={[3, 3, 0, 0]}>
                       {t12ChartData.map((entry, i) => (
                         <Cell key={i} fill={entry['Net Income'] >= 0 ? '#22c55e' : '#ef4444'} />
@@ -394,7 +394,7 @@ export default function Financials() {
                   </BarChart>
                 </ResponsiveContainer>
                 <div className="flex items-center gap-5 mt-2">
-                  {[['Income', '#5c3ff4'], ['Expenses', '#2a2a3a'], ['Net Income', '#22c55e']].map(([l, color]) => (
+                  {[['Income', '#5c3ff4'], ['Expenses', '#f59e0b'], ['Net Income', '#22c55e']].map(([l, color]) => (
                     <div key={l} className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
                       <span className="text-xs text-muted">{l}</span>
