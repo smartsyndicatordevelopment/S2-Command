@@ -12,6 +12,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+code, pre, kbd, samp {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: #0a0a0f; }
 ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
