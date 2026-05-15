@@ -79,6 +79,7 @@ function parsePnL(data) {
   let netIncome = null;
   const expenseLines = [];
   const groupedExpenseLines = [];
+  const groupedIncomeLines = [];
 
   for (const row of rows) {
     if (row?.type !== 'Section') continue;
@@ -97,6 +98,7 @@ function parsePnL(data) {
       // net operating income, net other income, etc. are intentionally skipped
     } else if ((label.includes('income') || label.includes('revenue')) && !label.startsWith('total')) {
       totalIncome += summaryAmt;
+      groupedIncomeLines.push(...extractCategoryRows(row?.Rows?.Row));
     } else if ((label.includes('expense') || label.includes('cost of')) && !label.startsWith('total')) {
       totalExpenses += summaryAmt;
       expenseLines.push(...extractDataRows(row?.Rows?.Row));
@@ -110,6 +112,7 @@ function parsePnL(data) {
     netIncome: netIncome !== null ? netIncome : totalIncome - totalExpenses,
     expenseLines,
     groupedExpenseLines,
+    groupedIncomeLines,
   };
 }
 
