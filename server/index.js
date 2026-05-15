@@ -21,6 +21,20 @@ app.set('trust proxy', 1); // trust Railway's load balancer for HTTPS detection
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Disable TRACE and other unused HTTP methods
+app.use((req, res, next) => {
+  if (['TRACE', 'TRACK', 'OPTIONS'].includes(req.method)) {
+    return res.status(405).set('Allow', 'GET, POST').end();
+  }
+  next();
+});
+
+// Prevent caching on all pages containing sensitive data
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache');
+  next();
+});
+
 app.use(cors({
   origin: isDev ? 'http://localhost:5173' : false,
   credentials: true,

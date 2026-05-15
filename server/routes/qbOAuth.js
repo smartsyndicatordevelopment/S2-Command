@@ -26,12 +26,15 @@ router.get('/quickbooks', requireAuth, (req, res) => {
   res.redirect(`${QB_AUTH_URL}?${params}`);
 });
 
-// QB redirects back here after user authorizes
+// QB redirects back here after user authorizes.
+// Per Intuit security requirements, this endpoint must NOT return HTML
+// since it receives sensitive params (code, realmId) in the URL. It must
+// do a 302 redirect so those values are not present when HTML is served.
 router.get('/quickbooks/callback', async (req, res) => {
   const { code, state, realmId } = req.query;
 
   if (!req.session.qbState || state !== req.session.qbState) {
-    return res.status(400).send('OAuth state mismatch. Close this tab and try again.');
+    return res.redirect('/auth/quickbooks/error?reason=state_mismatch');
   }
 
   try {
@@ -65,19 +68,45 @@ router.get('/quickbooks/callback', async (req, res) => {
       realmId: realmId || process.env.QB_REALM_ID || '',
     });
 
-    if (realmId) console.log('QB Realm ID from callback (save to QB_REALM_ID in .env):', realmId);
-
-    res.send(`
-      <!DOCTYPE html><html><head>
-      <style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0a0f;color:#22c55e;margin:0}h2{margin:0 0 8px}p{color:#6b7280;font-size:14px;margin:0}</style>
-      </head><body><div style="text-align:center">
-      <h2>QuickBooks Connected</h2><p>You can close this tab.</p>
-      </div><script>setTimeout(()=>window.close(),2000)</script></body></html>
-    `);
+    // 302 redirect -- no HTML returned from this endpoint
+    res.redirect('/auth/quickbooks/success');
   } catch (err) {
     console.error('QB OAuth callback error:', err.message);
-    res.status(500).send('QuickBooks auth failed: ' + err.message);
+    res.redirect('/auth/quickbooks/error?reason=token_exchange_failed');
   }
+});
+
+// Success page -- no sensitive params in URL, safe to return HTML
+router.get('/quickbooks/success', (req, res) => {
+  res.send(`<!DOCTYPE html><html><head>
+    <style>
+      body { font-family: 'Inter', system-ui, sans-serif; display: flex; align-items: center;
+             justify-content: center; height: 100vh; background: #0a0a0f; color: #5A7A65; margin: 0; }
+      h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
+      p { color: #6b7280; font-size: 14px; margin: 0; }
+    </style></head>
+    <body><div style="text-align:center">
+      <h2>QuickBooks Connected</h2>
+      <p>You can close this tab.</p>
+    </div>
+    <script>setTimeout(() => window.close(), 2000)</script>
+  </body></html>`);
+});
+
+// Error page -- safe to return HTML, no sensitive params forwarded
+router.get('/quickbooks/error', (req, res) => {
+  res.status(400).send(`<!DOCTYPE html><html><head>
+    <style>
+      body { font-family: 'Inter', system-ui, sans-serif; display: flex; align-items: center;
+             justify-content: center; height: 100vh; background: #0a0a0f; color: #ef4444; margin: 0; }
+      h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
+      p { color: #6b7280; font-size: 14px; margin: 0; }
+    </style></head>
+    <body><div style="text-align:center">
+      <h2>QuickBooks Connection Failed</h2>
+      <p>Close this tab and try connecting again from the dashboard.</p>
+    </div>
+  </body></html>`);
 });
 
 module.exports = router;
