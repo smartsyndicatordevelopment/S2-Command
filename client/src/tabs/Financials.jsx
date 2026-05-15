@@ -86,9 +86,12 @@ function ReconciledSwitch({ value, onChange }) {
 
 function ExpenseBreakdown({ lines, divisor, totalExpenses, label }) {
   const [view, setView] = useState('monthly');
+  const [expanded, setExpanded] = useState({});
   const div = view === 'monthly' ? divisor : 1;
-  const suffix = view === 'monthly' ? '/mo' : '/yr';
+  const suffix = view === 'monthly' ? '/mo' : '';
   const max = lines[0]?.amount / div || 1;
+
+  const toggle = (name) => setExpanded(e => ({ ...e, [name]: !e[name] }));
 
   return (
     <Card>
@@ -117,15 +120,45 @@ function ExpenseBreakdown({ lines, divisor, totalExpenses, label }) {
         <div className="space-y-2">
           {lines.map((line, i) => {
             const amt = line.amount / div;
+            const hasChildren = line.children?.length > 0;
+            const isOpen = expanded[line.name];
             return (
-              <div key={i} className="flex items-center gap-3">
-                <p className="text-sm text-dim w-48 truncate flex-shrink-0">{line.name}</p>
-                <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
-                  <div className="h-full rounded-full bg-purple" style={{ width: `${(amt / max) * 100}%` }} />
+              <div key={i}>
+                <div
+                  className={`flex items-center gap-3 py-0.5 ${hasChildren ? 'cursor-pointer group' : ''}`}
+                  onClick={() => hasChildren && toggle(line.name)}
+                >
+                  <span className="w-3 text-xs text-muted flex-shrink-0 text-center select-none">
+                    {hasChildren ? (isOpen ? '▾' : '▸') : ''}
+                  </span>
+                  <p className={`text-sm w-44 truncate flex-shrink-0 ${hasChildren ? 'text-white font-medium group-hover:text-purple transition-colors' : 'text-dim'}`}>
+                    {line.name}
+                  </p>
+                  <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-purple" style={{ width: `${(amt / max) * 100}%` }} />
+                  </div>
+                  <p className="text-sm text-white w-24 text-right flex-shrink-0">
+                    {fmtDollars(amt)}{suffix}
+                  </p>
                 </div>
-                <p className="text-sm text-white w-24 text-right flex-shrink-0">
-                  {fmtDollars(amt)}{suffix}
-                </p>
+                {hasChildren && isOpen && (
+                  <div className="ml-6 mt-1 mb-2 space-y-1.5 pl-3 border-l border-border/50">
+                    {line.children.map((child, j) => {
+                      const childAmt = child.amount / div;
+                      return (
+                        <div key={j} className="flex items-center gap-3">
+                          <p className="text-xs text-muted w-44 truncate flex-shrink-0">{child.name}</p>
+                          <div className="flex-1 h-1 bg-border rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-purple/40" style={{ width: `${(childAmt / max) * 100}%` }} />
+                          </div>
+                          <p className="text-xs text-dim w-24 text-right flex-shrink-0">
+                            {fmtDollars(childAmt)}{suffix}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -140,8 +173,8 @@ function ExpenseBreakdown({ lines, divisor, totalExpenses, label }) {
 }
 
 export default function Financials() {
-  const [viewMode, setViewMode] = useState('Annual');
-  const [reconciled, setReconciled] = useState(false);
+  const [viewMode, setViewMode] = useState('T-12');
+  const [reconciled, setReconciled] = useState(true);
 
   const pnl = useApi(`/api/pnl${reconciled ? '?reconciled=true' : ''}`);
   const monthly = useApi(
@@ -166,13 +199,21 @@ export default function Financials() {
   const endDate = currentPnl.endDate || '';
   const monthsInPeriod = endDate ? parseInt(endDate.split('-')[1], 10) : new Date().getMonth() + 1;
 
-  const annualExpenseLines = (currentPnl.expenseLines || [])
+  const annualGroupedLines = (currentPnl.groupedExpenseLines || [])
     .filter(e => e.amount > 0)
     .sort((a, b) => b.amount - a.amount)
-    .map(e => ({ ...e, name: stripAccountNumber(e.name) }));
+    .map(e => ({
+      ...e,
+      name: stripAccountNumber(e.name),
+      children: (e.children || [])
+        .filter(c => c.amount > 0)
+        .sort((a, b) => b.amount - a.amount)
+        .map(c => ({ ...c, name: stripAccountNumber(c.name) })),
+    }));
 
   // -- T-12 view data --
   const months = monthly.data?.months || [];
+  const t12MonthCount = months.length || 12;
 
   const t12ChartData = months.map(m => ({
     label: m.label + (m.isMTD ? '*' : ''),
@@ -181,20 +222,32 @@ export default function Financials() {
     'Net Income': Math.round(m.netIncome),
   }));
 
-  // Aggregate expense lines across all T-12 months, show monthly avg
-  const t12ExpenseMap = {};
+  // Aggregate grouped expense lines across all T-12 months (store totals; divisor handles avg)
+  const t12GroupedMap = {};
   months.forEach(m => {
-    (m.expenseLines || []).forEach(line => {
-      const name = stripAccountNumber(line.name);
-      t12ExpenseMap[name] = (t12ExpenseMap[name] || 0) + line.amount;
+    (m.groupedExpenseLines || []).forEach(cat => {
+      const name = stripAccountNumber(cat.name);
+      if (!t12GroupedMap[name]) t12GroupedMap[name] = { name, amount: 0, childMap: {} };
+      t12GroupedMap[name].amount += cat.amount;
+      (cat.children || []).forEach(child => {
+        const cName = stripAccountNumber(child.name);
+        t12GroupedMap[name].childMap[cName] = (t12GroupedMap[name].childMap[cName] || 0) + child.amount;
+      });
     });
   });
-  const t12MonthCount = months.length || 12;
-  const t12ExpenseLines = Object.entries(t12ExpenseMap)
-    .map(([name, total]) => ({ name, amount: total / t12MonthCount }))
+  const t12GroupedLines = Object.values(t12GroupedMap)
+    .map(cat => ({
+      name: cat.name,
+      amount: cat.amount,
+      children: Object.entries(cat.childMap)
+        .map(([name, total]) => ({ name, amount: total }))
+        .filter(c => c.amount > 0)
+        .sort((a, b) => b.amount - a.amount),
+    }))
     .filter(e => e.amount > 0)
     .sort((a, b) => b.amount - a.amount);
-  const t12TotalExpenses = months.reduce((s, m) => s + m.totalExpenses, 0) / t12MonthCount;
+
+  const t12TotalExpenses = months.reduce((s, m) => s + m.totalExpenses, 0);
 
   const showAnnual = viewMode === 'Annual';
 
@@ -233,20 +286,6 @@ export default function Financials() {
           {pnl.loading ? <Spinner label="Loading QuickBooks data..." /> :
            pnl.error ? <ErrorState message={pnl.error} onRetry={pnl.refetch} /> : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                {years.map(y => (
-                  <div key={y.year} className="bg-card border border-border rounded-lg p-4">
-                    <p className="text-xs text-muted mb-2 font-medium">{y.year}{y.year === currentYear ? ' YTD' : ''}</p>
-                    <p className="text-white text-lg font-bold">{fmtK(y.totalIncome)}</p>
-                    <p className="text-xs text-muted mt-1">income</p>
-                    <div className="mt-2 pt-2 border-t border-border">
-                      <p className={`text-sm font-semibold ${y.netIncome >= 0 ? 'text-green' : 'text-red'}`}>{fmtK(y.netIncome)}</p>
-                      <p className="text-xs text-muted">net</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
               <Card>
                 <p className="text-xs font-medium uppercase tracking-widest text-muted mb-5">Annual P&L -- All Years</p>
                 <ResponsiveContainer width="100%" height={240}>
@@ -264,17 +303,17 @@ export default function Financials() {
                   </BarChart>
                 </ResponsiveContainer>
                 <div className="flex items-center gap-5 mt-2">
-                  {[['Income', '#5c3ff4'], ['Expenses', '#2a2a3a'], ['Net Income', '#22c55e']].map(([label, color]) => (
-                    <div key={label} className="flex items-center gap-1.5">
+                  {[['Income', '#5c3ff4'], ['Expenses', '#2a2a3a'], ['Net Income', '#22c55e']].map(([l, color]) => (
+                    <div key={l} className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
-                      <span className="text-xs text-muted">{label}</span>
+                      <span className="text-xs text-muted">{l}</span>
                     </div>
                   ))}
                 </div>
               </Card>
 
               <ExpenseBreakdown
-                lines={annualExpenseLines}
+                lines={annualGroupedLines}
                 divisor={monthsInPeriod}
                 totalExpenses={currentPnl.totalExpenses || 0}
                 label={`${currentYear} Expense Breakdown`}
@@ -322,7 +361,7 @@ export default function Financials() {
               <div className="grid grid-cols-3 gap-3">
                 {[
                   { label: 'Avg Monthly Income', value: months.reduce((s, m) => s + m.totalIncome, 0) / t12MonthCount, color: 'text-purple' },
-                  { label: 'Avg Monthly Expenses', value: t12TotalExpenses, color: 'text-dim' },
+                  { label: 'Avg Monthly Expenses', value: t12TotalExpenses / t12MonthCount, color: 'text-dim' },
                   { label: 'Avg Monthly Net', value: months.reduce((s, m) => s + m.netIncome, 0) / t12MonthCount, color: null },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="bg-card border border-border rounded-lg p-4">
@@ -334,10 +373,10 @@ export default function Financials() {
                 ))}
               </div>
 
-              {/* Bar chart: Income + Expenses per month */}
+              {/* Bar chart: Income + Expenses + Net Income per month */}
               <Card>
                 <p className="text-xs font-medium uppercase tracking-widest text-muted mb-5">
-                  Monthly Income vs Expenses -- Trailing 12 Months
+                  Monthly P&L -- Trailing 12 Months
                 </p>
                 <ResponsiveContainer width="100%" height={240}>
                   <BarChart data={t12ChartData} barGap={3} barCategoryGap="25%">
@@ -347,13 +386,18 @@ export default function Financials() {
                     <Tooltip content={<MonthlyTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
                     <Bar dataKey="Income" name="Income" fill="#5c3ff4" radius={[3, 3, 0, 0]} />
                     <Bar dataKey="Expenses" name="Expenses" fill="#2a2a3a" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Net Income" name="Net Income" radius={[3, 3, 0, 0]}>
+                      {t12ChartData.map((entry, i) => (
+                        <Cell key={i} fill={entry['Net Income'] >= 0 ? '#22c55e' : '#ef4444'} />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
                 <div className="flex items-center gap-5 mt-2">
-                  {[['Income', '#5c3ff4'], ['Expenses', '#2a2a3a']].map(([label, color]) => (
-                    <div key={label} className="flex items-center gap-1.5">
+                  {[['Income', '#5c3ff4'], ['Expenses', '#2a2a3a'], ['Net Income', '#22c55e']].map(([l, color]) => (
+                    <div key={l} className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
-                      <span className="text-xs text-muted">{label}</span>
+                      <span className="text-xs text-muted">{l}</span>
                     </div>
                   ))}
                   {reconciled && <span className="text-xs text-muted ml-auto">Reconciled months only</span>}
@@ -394,8 +438,8 @@ export default function Financials() {
 
               {/* Expense breakdown: T-12 monthly average */}
               <ExpenseBreakdown
-                lines={t12ExpenseLines}
-                divisor={1}
+                lines={t12GroupedLines}
+                divisor={t12MonthCount}
                 totalExpenses={t12TotalExpenses}
                 label="Expense Breakdown -- T-12 Monthly Avg"
               />

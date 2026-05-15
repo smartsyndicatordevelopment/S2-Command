@@ -51,12 +51,34 @@ function extractDataRows(rows) {
   return lines;
 }
 
+function extractCategoryRows(rows) {
+  const items = [];
+  for (const row of rows || []) {
+    if (row?.type === 'Data') {
+      const name = row?.ColData?.[0]?.value || '';
+      const amount = parseAmount(row?.ColData?.[1]?.value);
+      if (name && amount) items.push({ name, amount, children: [] });
+    } else if (row?.type === 'Section') {
+      const header = row?.Header?.ColData?.[0]?.value || '';
+      const summaryAmt = parseAmount(row?.Summary?.ColData?.[1]?.value);
+      const children = extractDataRows(row?.Rows?.Row);
+      if (header && summaryAmt) {
+        items.push({ name: header, amount: summaryAmt, children });
+      } else {
+        items.push(...children.map(c => ({ ...c, children: [] })));
+      }
+    }
+  }
+  return items;
+}
+
 function parsePnL(data) {
   const rows = data?.Rows?.Row || [];
   let totalIncome = 0;
   let totalExpenses = 0;
   let netIncome = null;
   const expenseLines = [];
+  const groupedExpenseLines = [];
 
   for (const row of rows) {
     if (row?.type !== 'Section') continue;
@@ -78,6 +100,7 @@ function parsePnL(data) {
     } else if ((label.includes('expense') || label.includes('cost of')) && !label.startsWith('total')) {
       totalExpenses += summaryAmt;
       expenseLines.push(...extractDataRows(row?.Rows?.Row));
+      groupedExpenseLines.push(...extractCategoryRows(row?.Rows?.Row));
     }
   }
 
@@ -86,6 +109,7 @@ function parsePnL(data) {
     totalExpenses,
     netIncome: netIncome !== null ? netIncome : totalIncome - totalExpenses,
     expenseLines,
+    groupedExpenseLines,
   };
 }
 
