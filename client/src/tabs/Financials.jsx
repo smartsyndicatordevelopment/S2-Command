@@ -16,13 +16,17 @@ function fmtDollars(val) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 }
 
+function stripAccountNumber(name) {
+  return name.replace(/^\d[\d.]*\s+/, '');
+}
+
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-card border border-border rounded-lg px-3 py-2 text-xs">
       <p className="text-muted mb-1">{label}</p>
       {payload.map(p => (
-        <p key={p.dataKey} className="font-mono" style={{ color: p.color }}>
+        <p key={p.dataKey} style={{ color: p.color }}>
           {p.name}: {fmtDollars(p.value)}
         </p>
       ))}
@@ -31,14 +35,17 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export default function Financials() {
-  const pnl = useApi('/api/pnl');
+  const [reconciled, setReconciled] = useState(false);
   const [expenseView, setExpenseView] = useState('monthly');
+
+  const pnl = useApi(`/api/pnl${reconciled ? '?reconciled=true' : ''}`);
 
   if (pnl.loading) return <Spinner label="Loading QuickBooks data..." />;
   if (pnl.error) return <ErrorState message={pnl.error} onRetry={pnl.refetch} />;
 
   const notConfigured = pnl.data?.notConfigured;
   const years = pnl.data?.years || [];
+  const reconciledThrough = pnl.data?.reconciledThrough;
   const currentYear = new Date().getFullYear();
   const currentPnl = years.find(y => y.year === currentYear) || {};
 
@@ -49,19 +56,47 @@ export default function Financials() {
     'Net Income': Math.round(y.netIncome),
   }));
 
-  // Expense lines from current YTD
+  // Expense lines from current YTD, account numbers stripped
   const expenseLines = (currentPnl.expenseLines || [])
     .filter(e => e.amount > 0)
-    .sort((a, b) => b.amount - a.amount);
+    .sort((a, b) => b.amount - a.amount)
+    .map(e => ({ ...e, name: stripAccountNumber(e.name) }));
 
-  const divisor = expenseView === 'monthly' ? 12 : 1;
+  // Use actual months in the YTD period, not always 12
+  const endDate = currentPnl.endDate || '';
+  const monthsInPeriod = endDate ? parseInt(endDate.split('-')[1], 10) : new Date().getMonth() + 1;
+  const divisor = expenseView === 'monthly' ? monthsInPeriod : 1;
   const viewLabel = expenseView === 'monthly' ? '/mo' : '/yr';
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-white">Financials</h1>
-        <p className="text-xs text-muted mt-0.5">QuickBooks -- Cash basis</p>
+      {/* Header with reconciled toggle */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-white">Financials</h1>
+          <p className="text-xs text-muted mt-0.5">
+            QuickBooks -- Cash basis
+            {reconciled && reconciledThrough && (
+              <span className="ml-2 text-green">-- Through {reconciledThrough}</span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs ${!reconciled ? 'text-white' : 'text-muted'}`}>All Data</span>
+          <button
+            onClick={() => setReconciled(r => !r)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+              reconciled ? 'bg-green' : 'bg-border'
+            }`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                reconciled ? 'translate-x-4' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+          <span className={`text-xs ${reconciled ? 'text-green font-medium' : 'text-muted'}`}>Reconciled</span>
+        </div>
       </div>
 
       {notConfigured && (
@@ -83,10 +118,10 @@ export default function Financials() {
         {years.map(y => (
           <div key={y.year} className="bg-card border border-border rounded-lg p-4">
             <p className="text-xs text-muted mb-2 font-medium">{y.year}{y.year === currentYear ? ' YTD' : ''}</p>
-            <p className="font-mono text-white text-lg font-bold">{fmtK(y.totalIncome)}</p>
+            <p className="text-white text-lg font-bold">{fmtK(y.totalIncome)}</p>
             <p className="text-xs text-muted mt-1">income</p>
             <div className="mt-2 pt-2 border-t border-border">
-              <p className={`font-mono text-sm font-semibold ${y.netIncome >= 0 ? 'text-green' : 'text-red'}`}>
+              <p className={`text-sm font-semibold ${y.netIncome >= 0 ? 'text-green' : 'text-red'}`}>
                 {fmtK(y.netIncome)}
               </p>
               <p className="text-xs text-muted">net</p>
@@ -122,12 +157,15 @@ export default function Financials() {
         </div>
       </Card>
 
-      {/* Recurring expenses */}
+      {/* Expense breakdown */}
       <Card>
         <div className="flex items-center justify-between mb-5">
           <div>
             <p className="text-xs font-medium uppercase tracking-widest text-muted">{currentYear} Expense Breakdown</p>
-            <p className="text-xs text-muted mt-0.5">QuickBooks line items</p>
+            <p className="text-xs text-muted mt-0.5">
+              QuickBooks line items
+              {expenseView === 'monthly' && ` -- avg over ${monthsInPeriod} month${monthsInPeriod !== 1 ? 's' : ''}`}
+            </p>
           </div>
           <div className="flex items-center gap-1 bg-bg rounded-lg p-1 border border-border">
             {['monthly', 'annual'].map(v => (
@@ -156,12 +194,9 @@ export default function Financials() {
                 <div key={i} className="flex items-center gap-3">
                   <p className="text-sm text-dim w-48 truncate flex-shrink-0">{line.name}</p>
                   <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-purple"
-                      style={{ width: `${pct}%` }}
-                    />
+                    <div className="h-full rounded-full bg-purple" style={{ width: `${pct}%` }} />
                   </div>
-                  <p className="font-mono text-sm text-white w-24 text-right flex-shrink-0">
+                  <p className="text-sm text-white w-24 text-right flex-shrink-0">
                     {fmtDollars(displayAmt)}{viewLabel}
                   </p>
                 </div>
@@ -169,7 +204,7 @@ export default function Financials() {
             })}
             <div className="pt-3 border-t border-border flex justify-between">
               <p className="text-xs text-muted">Total Expenses</p>
-              <p className="font-mono text-sm text-yellow">
+              <p className="text-sm text-yellow">
                 {fmtDollars((currentPnl.totalExpenses || 0) / divisor)}{viewLabel}
               </p>
             </div>
@@ -195,9 +230,9 @@ export default function Financials() {
                 <td className="py-2.5 pr-4 text-white font-medium">
                   {y.year}{y.year === currentYear ? <span className="text-purple text-xs ml-1">YTD</span> : ''}
                 </td>
-                <td className="py-2.5 pr-4 font-mono text-right text-dim">{fmtDollars(y.totalIncome)}</td>
-                <td className="py-2.5 pr-4 font-mono text-right text-dim">{fmtDollars(y.totalExpenses)}</td>
-                <td className={`py-2.5 font-mono text-right font-semibold ${y.netIncome >= 0 ? 'text-green' : 'text-red'}`}>
+                <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(y.totalIncome)}</td>
+                <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(y.totalExpenses)}</td>
+                <td className={`py-2.5 text-right font-semibold ${y.netIncome >= 0 ? 'text-green' : 'text-red'}`}>
                   {fmtDollars(y.netIncome)}
                 </td>
               </tr>

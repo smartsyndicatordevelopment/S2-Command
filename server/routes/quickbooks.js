@@ -103,15 +103,29 @@ router.get('/pnl', async (req, res) => {
     });
   }
 
+  const reconciled = req.query.reconciled === 'true';
+
+  // Reconciled mode: cap current year at end of last full month so only
+  // fully-closed periods (likely reconciled by CPA) are shown.
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const today = now.toISOString().split('T')[0];
+
+  let currentYearEnd = today;
+  let reconciledThrough = null;
+  if (reconciled) {
+    const lastDayPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    currentYearEnd = lastDayPrevMonth.toISOString().split('T')[0];
+    reconciledThrough = lastDayPrevMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+
   try {
-    const currentYear = new Date().getFullYear();
-    const today = new Date().toISOString().split('T')[0];
     const years = [...new Set([2022, 2023, 2024, 2025, currentYear])];
 
     const results = await Promise.all(
       years.map(async (year) => {
         const startDate = `${year}-01-01`;
-        const endDate = year === currentYear ? today : `${year}-12-31`;
+        const endDate = year === currentYear ? currentYearEnd : `${year}-12-31`;
         try {
           const data = await withRetry(() =>
             qbGet(`/reports/ProfitAndLoss?start_date=${startDate}&end_date=${endDate}&accounting_method=Cash`)
@@ -124,7 +138,7 @@ router.get('/pnl', async (req, res) => {
       })
     );
 
-    res.json({ years: results });
+    res.json({ years: results, reconciledThrough });
   } catch (err) {
     console.error('QB /pnl error:', err.message);
     res.status(500).json({ error: 'Failed to fetch P&L data' });
