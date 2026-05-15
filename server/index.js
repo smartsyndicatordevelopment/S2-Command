@@ -4,8 +4,6 @@ const session = require('express-session');
 const cors = require('cors');
 const path = require('path');
 
-const FileStore = require('session-file-store')(session);
-
 const authRouter = require('./routes/auth');
 const qbOAuthRouter = require('./routes/qbOAuth');
 const stripeRouter = require('./routes/stripe');
@@ -25,12 +23,6 @@ app.use(cors({
 }));
 
 app.use(session({
-  store: new FileStore({
-    path: './sessions',
-    ttl: 86400,       // 24 hours in seconds -- matches cookie maxAge
-    retries: 0,       // don't retry on read errors
-    logFn: () => {},  // suppress verbose file-store logs
-  }),
   secret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
   resave: false,
   saveUninitialized: false,
