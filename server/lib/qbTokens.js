@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const fetch = require('node-fetch');
 
-const TOKENS_FILE = path.join(__dirname, '../tokens.json');
+const TOKENS_FILE = process.env.TOKENS_PATH || path.join(__dirname, '../tokens.json');
 const QB_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 const ALGORITHM = 'aes-256-gcm';
 
