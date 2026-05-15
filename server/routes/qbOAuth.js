@@ -95,16 +95,19 @@ router.get('/quickbooks/success', (req, res) => {
 
 // Error page -- safe to return HTML, no sensitive params forwarded
 router.get('/quickbooks/error', (req, res) => {
+  const reason = req.query.reason || 'unknown';
   res.status(400).send(`<!DOCTYPE html><html><head>
     <style>
       body { font-family: 'Inter', system-ui, sans-serif; display: flex; align-items: center;
              justify-content: center; height: 100vh; background: #0a0a0f; color: #ef4444; margin: 0; }
       h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
       p { color: #6b7280; font-size: 14px; margin: 0; }
+      code { color: #9ca3af; font-size: 12px; margin-top: 8px; display: block; }
     </style></head>
     <body><div style="text-align:center">
       <h2>QuickBooks Connection Failed</h2>
       <p>Close this tab and try connecting again from the dashboard.</p>
+      <code>reason: ${reason}</code>
     </div>
   </body></html>`);
 });
