@@ -50,51 +50,6 @@ function processGroupedLines(items) {
     }));
 }
 
-const SOFTWARE_RE = /software|app|saas|cloud|platform|tool|subscript/i;
-
-function getSoftwareSubscriptions(months) {
-  const vendorData = {};
-
-  function collect(items, monthLabel, inSoftware) {
-    (items || []).forEach(item => {
-      const name = stripAccountNumber(item.name);
-      const hasChildren = item.children?.length > 0;
-      if (inSoftware) {
-        if (hasChildren) {
-          collect(item.children, monthLabel, true);
-        } else {
-          if (!vendorData[name]) vendorData[name] = { name, monthAmounts: {} };
-          vendorData[name].monthAmounts[monthLabel] = (vendorData[name].monthAmounts[monthLabel] || 0) + item.amount;
-        }
-      } else {
-        if (SOFTWARE_RE.test(name)) {
-          if (hasChildren) {
-            collect(item.children, monthLabel, true);
-          } else {
-            if (!vendorData[name]) vendorData[name] = { name, monthAmounts: {} };
-            vendorData[name].monthAmounts[monthLabel] = (vendorData[name].monthAmounts[monthLabel] || 0) + item.amount;
-          }
-        } else {
-          collect(item.children, monthLabel, false);
-        }
-      }
-    });
-  }
-
-  months.forEach(m => collect(m.groupedExpenseLines || [], m.label, false));
-
-  return Object.values(vendorData)
-    .map(v => {
-      const amounts = Object.values(v.monthAmounts);
-      const count = amounts.length;
-      const total = amounts.reduce((s, a) => s + a, 0);
-      const avg = total / Math.max(count, 1);
-      const freq = count >= 10 ? 'Monthly' : count >= 4 ? 'Quarterly' : count >= 2 ? 'Semi-Annual' : 'Annual';
-      return { name: v.name, monthlyAvg: avg, freq, count, annualEst: avg * 12 };
-    })
-    .filter(v => v.count > 0 && v.monthlyAvg > 0)
-    .sort((a, b) => b.monthlyAvg - a.monthlyAvg);
-}
 
 // -- Tooltips --
 
@@ -271,6 +226,7 @@ export default function Financials() {
   const monthly = useApi(
     viewMode === 'T-12' ? `/api/pnl/monthly${reconciled ? '?reconciled=true' : ''}` : null
   );
+  const subscriptions = useApi(viewMode === 'T-12' ? '/api/software-subscriptions' : null);
 
   const currentYear = new Date().getFullYear();
 
@@ -319,8 +275,8 @@ export default function Financials() {
   const lastMonthExpenseLines = processGroupedLines(lastMonth.groupedExpenseLines);
   const lastMonthIncomeLines = processGroupedLines(lastMonth.groupedIncomeLines);
 
-  // Software subscriptions
-  const softwareSubs = getSoftwareSubscriptions(months);
+  // Software subscriptions (from transaction-level QB query)
+  const softwareSubs = subscriptions.data?.vendors || [];
 
   const showAnnual = viewMode === 'Annual';
 
@@ -574,7 +530,10 @@ export default function Financials() {
               )}
 
               {/* Software subscriptions */}
-              {softwareSubs.length > 0 && (
+              {subscriptions.loading && (
+                <Spinner label="Loading software subscriptions..." />
+              )}
+              {!subscriptions.loading && softwareSubs.length > 0 && (
                 <Card>
                   <div className="flex items-center justify-between mb-5">
                     <div>

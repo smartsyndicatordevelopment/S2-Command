@@ -220,6 +220,69 @@ router.get('/pnl/monthly', async (req, res) => {
   }
 });
 
+const SOFTWARE_RE = /software|app|saas|cloud|platform|tool|subscript/i;
+
+router.get('/software-subscriptions', async (req, res) => {
+  if (!qbConfigured()) return res.json({ vendors: [], notConfigured: true });
+
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString().split('T')[0];
+  const end = now.toISOString().split('T')[0];
+
+  const vendorMonths = {};
+  const recordVendor = (name, month, amount) => {
+    if (!name || !month || !(amount > 0)) return;
+    if (!vendorMonths[name]) vendorMonths[name] = {};
+    vendorMonths[name][month] = (vendorMonths[name][month] || 0) + amount;
+  };
+
+  try {
+    const [purchaseData, billData] = await Promise.all([
+      withRetry(() => qbGet(`/query?query=${encodeURIComponent(
+        `SELECT * FROM Purchase WHERE TxnDate >= '${start}' AND TxnDate <= '${end}' MAXRESULTS 1000`
+      )}`)),
+      withRetry(() => qbGet(`/query?query=${encodeURIComponent(
+        `SELECT * FROM Bill WHERE TxnDate >= '${start}' AND TxnDate <= '${end}' MAXRESULTS 1000`
+      )}`)),
+    ]);
+
+    for (const txn of purchaseData?.QueryResponse?.Purchase || []) {
+      const vendor = txn.EntityRef?.name || txn.Line?.[0]?.Description || '';
+      const month = (txn.TxnDate || '').substring(0, 7);
+      for (const line of txn.Line || []) {
+        const account = line.AccountBasedExpenseLineDetail?.AccountRef?.name || '';
+        if (SOFTWARE_RE.test(account)) recordVendor(vendor, month, line.Amount);
+      }
+    }
+
+    for (const txn of billData?.QueryResponse?.Bill || []) {
+      const vendor = txn.VendorRef?.name || '';
+      const month = (txn.TxnDate || '').substring(0, 7);
+      for (const line of txn.Line || []) {
+        const account = line.AccountBasedExpenseLineDetail?.AccountRef?.name || '';
+        if (SOFTWARE_RE.test(account)) recordVendor(vendor, month, line.Amount);
+      }
+    }
+
+    const vendors = Object.entries(vendorMonths)
+      .map(([name, months]) => {
+        const amounts = Object.values(months);
+        const count = amounts.length;
+        const total = amounts.reduce((s, a) => s + a, 0);
+        const avg = total / count;
+        const freq = count >= 10 ? 'Monthly' : count >= 4 ? 'Quarterly' : count >= 2 ? 'Semi-Annual' : 'Annual';
+        return { name, monthlyAvg: avg, freq, count, annualEst: avg * 12 };
+      })
+      .filter(v => v.monthlyAvg >= 1)
+      .sort((a, b) => b.monthlyAvg - a.monthlyAvg);
+
+    res.json({ vendors });
+  } catch (err) {
+    console.error('QB /software-subscriptions error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/qb/status', (req, res) => {
   const cache = getTokenCache();
   res.json({
