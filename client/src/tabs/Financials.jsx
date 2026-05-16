@@ -501,16 +501,6 @@ export default function Financials() {
                 label="Revenue Breakdown -- T-12 Monthly Avg"
                 isIncome
               />
-              {lastMonth.label && (
-                <FinancialBreakdown
-                  lines={lastMonthIncomeLines}
-                  divisor={1}
-                  totalAmount={lastMonth.totalIncome || 0}
-                  label={`Revenue Breakdown -- ${lastMonth.label}`}
-                  isIncome
-                  showToggle={false}
-                />
-              )}
 
               {/* Expense breakdowns */}
               <FinancialBreakdown
@@ -519,15 +509,6 @@ export default function Financials() {
                 totalAmount={t12TotalExpenses}
                 label="Expense Breakdown -- T-12 Monthly Avg"
               />
-              {lastMonth.label && (
-                <FinancialBreakdown
-                  lines={lastMonthExpenseLines}
-                  divisor={1}
-                  totalAmount={lastMonth.totalExpenses || 0}
-                  label={`Expense Breakdown -- ${lastMonth.label}`}
-                  showToggle={false}
-                />
-              )}
 
               {/* Software subscriptions */}
               {subscriptions.loading && (
@@ -551,7 +532,8 @@ export default function Financials() {
                       <tr className="text-left border-b border-border">
                         <th className="text-xs text-muted font-medium pb-3 pr-4">Vendor</th>
                         <th className="text-xs text-muted font-medium pb-3 pr-4 text-right">Avg / mo</th>
-                        <th className="text-xs text-muted font-medium pb-3 pr-6 text-center">Billing</th>
+                        <th className="text-xs text-muted font-medium pb-3 pr-4 text-center">Billing</th>
+                        <th className="text-xs text-muted font-medium pb-3 pr-4 text-center">Status</th>
                         <th className="text-xs text-muted font-medium pb-3 text-right">Annual Est.</th>
                       </tr>
                     </thead>
@@ -560,7 +542,7 @@ export default function Financials() {
                         <tr key={i}>
                           <td className="py-2.5 pr-4 text-white">{sub.name}</td>
                           <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(sub.monthlyAvg)}</td>
-                          <td className="py-2.5 pr-6 text-center">
+                          <td className="py-2.5 pr-4 text-center">
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
                               sub.freq === 'Monthly' ? 'bg-purple/20 text-purple' :
                               sub.freq === 'Annual' ? 'bg-green/20 text-green' :
@@ -569,13 +551,20 @@ export default function Financials() {
                               {sub.freq}
                             </span>
                           </td>
+                          <td className="py-2.5 pr-4 text-center">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              sub.active ? 'bg-green/20 text-green' : 'bg-red/20 text-red'
+                            }`}>
+                              {sub.active ? 'Active' : 'Cancelled'}
+                            </span>
+                          </td>
                           <td className="py-2.5 text-right text-white font-medium">{fmtDollars(sub.annualEst)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-border">
-                        <td className="pt-3 text-xs text-muted" colSpan={3}>Total annual software spend (estimated)</td>
+                        <td className="pt-3 text-xs text-muted" colSpan={4}>Total annual software spend (estimated)</td>
                         <td className="pt-3 text-right text-sm text-yellow font-semibold">
                           {fmtDollars(softwareSubs.reduce((s, v) => s + v.annualEst, 0))}
                         </td>
@@ -583,6 +572,27 @@ export default function Financials() {
                     </tfoot>
                   </table>
                 </Card>
+              )}
+
+              {/* 1-month snapshots -- together at bottom */}
+              {lastMonth.label && (
+                <FinancialBreakdown
+                  lines={lastMonthIncomeLines}
+                  divisor={1}
+                  totalAmount={lastMonth.totalIncome || 0}
+                  label={`Revenue Breakdown -- ${lastMonth.label}`}
+                  isIncome
+                  showToggle={false}
+                />
+              )}
+              {lastMonth.label && (
+                <FinancialBreakdown
+                  lines={lastMonthExpenseLines}
+                  divisor={1}
+                  totalAmount={lastMonth.totalExpenses || 0}
+                  label={`Expense Breakdown -- ${lastMonth.label}`}
+                  showToggle={false}
+                />
               )}
             </>
           )}

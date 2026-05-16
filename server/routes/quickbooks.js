@@ -264,14 +264,19 @@ router.get('/software-subscriptions', async (req, res) => {
       }
     }
 
+    const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().substring(0, 7);
+
     const vendors = Object.entries(vendorMonths)
       .map(([name, months]) => {
         const amounts = Object.values(months);
+        const sortedMonths = Object.keys(months).sort();
+        const lastMonth = sortedMonths[sortedMonths.length - 1];
         const count = amounts.length;
         const total = amounts.reduce((s, a) => s + a, 0);
         const avg = total / count;
         const freq = count >= 10 ? 'Monthly' : count >= 4 ? 'Quarterly' : count >= 2 ? 'Semi-Annual' : 'Annual';
-        return { name, monthlyAvg: avg, freq, count, annualEst: avg * 12 };
+        const active = lastMonth >= twoMonthsAgo;
+        return { name, monthlyAvg: avg, freq, count, annualEst: avg * 12, active };
       })
       .filter(v => v.monthlyAvg >= 1)
       .sort((a, b) => b.monthlyAvg - a.monthlyAvg);
