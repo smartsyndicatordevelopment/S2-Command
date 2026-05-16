@@ -132,6 +132,9 @@ export default function Customers() {
   const canceled = useMemo(() => subs.data?.canceledSubscriptions || [], [subs.data]);
   const oneOffs  = useMemo(() => subs.data?.oneOffTransactions || [], [subs.data]);
 
+  const totalEverCount       = subs.data?.totalEverCount || 0;
+  const totalCanceledAllTime = subs.data?.totalCanceledAllTime || 0;
+
   const upcomingRenewals = useMemo(() => {
     const now    = Math.floor(Date.now() / 1000);
     const cutoff = now + 45 * 24 * 60 * 60;
@@ -201,11 +204,36 @@ export default function Customers() {
     created:      s => s.created,
   });
 
+  const churnRate   = totalEverCount > 0 ? (totalCanceledAllTime / totalEverCount) * 100 : 0;
+  const churnAccent = churnRate < 5 ? 'green' : churnRate < 15 ? 'yellow' : 'red';
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-lg font-semibold text-white">Customers</h1>
         <p className="text-xs text-muted mt-0.5">{active.length} active subscriptions -- live from Stripe</p>
+      </div>
+
+      {/* Top-line subscriber stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <StatCard
+          label="All-Time Subscribers"
+          value={totalEverCount.toLocaleString()}
+          sub={`${totalCanceledAllTime.toLocaleString()} canceled all-time`}
+          accent="white"
+        />
+        <StatCard
+          label="Active Subscribers"
+          value={active.length.toLocaleString()}
+          sub={paused.length > 0 ? `+ ${paused.length} paused` : 'currently subscribed'}
+          accent="green"
+        />
+        <StatCard
+          label="Global Churn Rate"
+          value={`${churnRate.toFixed(1)}%`}
+          sub={`${totalCanceledAllTime} canceled of ${totalEverCount} total`}
+          accent={churnAccent}
+        />
       </div>
 
       {/* MRR + ARR -- active only, paused excluded */}

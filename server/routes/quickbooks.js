@@ -223,17 +223,27 @@ router.get('/pnl/monthly', async (req, res) => {
 const SOFTWARE_RE = /software|app|saas|cloud|platform|tool|subscript/i;
 
 router.get('/software-subscriptions', async (req, res) => {
-  if (!qbConfigured()) return res.json({ vendors: [], notConfigured: true });
+  if (!qbConfigured()) return res.json({ vendors: [], vendors30d: [], notConfigured: true });
 
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString().split('T')[0];
   const end = now.toISOString().split('T')[0];
+  const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthKey = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
 
   const vendorMonths = {};
-  const recordVendor = (name, month, amount) => {
-    if (!name || !month || !(amount > 0)) return;
+  const vendor30d = {};
+
+  const recordVendor = (name, date, amount) => {
+    if (!name || !date || !(amount > 0)) return;
+    const month = date.substring(0, 7);
     if (!vendorMonths[name]) vendorMonths[name] = {};
     vendorMonths[name][month] = (vendorMonths[name][month] || 0) + amount;
+    if (date >= thirtyDaysAgo) {
+      vendor30d[name] = (vendor30d[name] || 0) + amount;
+    }
   };
 
   try {
@@ -248,35 +258,65 @@ router.get('/software-subscriptions', async (req, res) => {
 
     for (const txn of purchaseData?.QueryResponse?.Purchase || []) {
       const vendor = txn.EntityRef?.name || txn.Line?.[0]?.Description || '';
-      const month = (txn.TxnDate || '').substring(0, 7);
+      const date = txn.TxnDate || '';
       for (const line of txn.Line || []) {
         const account = line.AccountBasedExpenseLineDetail?.AccountRef?.name || '';
-        if (SOFTWARE_RE.test(account)) recordVendor(vendor, month, line.Amount);
+        if (SOFTWARE_RE.test(account)) recordVendor(vendor, date, line.Amount);
       }
     }
 
     for (const txn of billData?.QueryResponse?.Bill || []) {
       const vendor = txn.VendorRef?.name || '';
-      const month = (txn.TxnDate || '').substring(0, 7);
+      const date = txn.TxnDate || '';
       for (const line of txn.Line || []) {
         const account = line.AccountBasedExpenseLineDetail?.AccountRef?.name || '';
-        if (SOFTWARE_RE.test(account)) recordVendor(vendor, month, line.Amount);
+        if (SOFTWARE_RE.test(account)) recordVendor(vendor, date, line.Amount);
       }
     }
 
+    // Compute freq and active for each vendor from 12-month history
+    const vendorMeta = {};
+    for (const [name, byMonth] of Object.entries(vendorMonths)) {
+      const sortedKeys = Object.keys(byMonth).sort();
+      const count = sortedKeys.length;
+      let freq;
+      if (count === 1) {
+        freq = 'Annual';
+      } else {
+        const monthNums = sortedKeys.map(k => {
+          const [y, mo] = k.split('-').map(Number);
+          return y * 12 + mo;
+        });
+        let totalGap = 0;
+        for (let i = 1; i < monthNums.length; i++) totalGap += monthNums[i] - monthNums[i - 1];
+        const avgGap = totalGap / (monthNums.length - 1);
+        freq = avgGap <= 1.5 ? 'Monthly' : avgGap <= 4.5 ? 'Quarterly' : avgGap <= 8 ? 'Semi-Annual' : 'Annual';
+      }
+      const lastSeen = sortedKeys[sortedKeys.length - 1];
+      vendorMeta[name] = { freq, count, active: lastSeen >= prevMonthKey };
+    }
+
+    // Last 12 months: monthlyAvg = total / 12 (rolling average), annualEst = total spend
     const vendors = Object.entries(vendorMonths)
-      .map(([name, months]) => {
-        const amounts = Object.values(months);
-        const count = amounts.length;
-        const total = amounts.reduce((s, a) => s + a, 0);
-        const avg = total / count;
-        const freq = count >= 10 ? 'Monthly' : count >= 4 ? 'Quarterly' : count >= 2 ? 'Semi-Annual' : 'Annual';
-        return { name, monthlyAvg: avg, freq, count, annualEst: avg * 12 };
+      .map(([name, byMonth]) => {
+        const total = Object.values(byMonth).reduce((s, a) => s + a, 0);
+        const monthlyAvg = total / 12;
+        const { freq, count, active } = vendorMeta[name];
+        return { name, monthlyAvg, freq, count, annualEst: total, active };
       })
       .filter(v => v.monthlyAvg >= 1)
       .sort((a, b) => b.monthlyAvg - a.monthlyAvg);
 
-    res.json({ vendors });
+    // Last 30 days: monthlyAvg = charges in window, annualEst = monthlyAvg * 12
+    const vendors30d = Object.entries(vendor30d)
+      .map(([name, total]) => {
+        const meta = vendorMeta[name] || { freq: 'Unknown', count: 1, active: true };
+        return { name, monthlyAvg: total, freq: meta.freq, count: meta.count, annualEst: total * 12, active: true };
+      })
+      .filter(v => v.monthlyAvg >= 1)
+      .sort((a, b) => b.monthlyAvg - a.monthlyAvg);
+
+    res.json({ vendors, vendors30d });
   } catch (err) {
     console.error('QB /software-subscriptions error:', err.message);
     res.status(500).json({ error: err.message });

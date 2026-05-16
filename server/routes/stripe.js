@@ -139,6 +139,10 @@ router.get('/subscriptions', async (req, res) => {
 
     const allPaused = [...legacyPaused, ...newPaused];
 
+    const allCanceled = rawCanceled.filter(s => ownerFilter(s) && s.canceled_at);
+    const totalEverCount = trueActive.length + allPaused.length + allCanceled.length;
+    const totalCanceledAllTime = allCanceled.length;
+
     // Resolve invoice amounts for each group in parallel (N concurrent lookups per group)
     const resolveGroup = (subs) =>
       Promise.all(
@@ -182,6 +186,8 @@ router.get('/subscriptions', async (req, res) => {
       oneOffTransactions: oneOffResults,
       mrr,
       uniqueClients,
+      totalEverCount,
+      totalCanceledAllTime,
     });
   } catch (err) {
     console.error('Stripe /subscriptions error:', err.message);

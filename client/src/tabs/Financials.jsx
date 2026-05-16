@@ -221,6 +221,9 @@ export default function Financials() {
   const [reconciled, setReconciled] = useState(true);
   const [showIncomeLine, setShowIncomeLine] = useState(false);
   const [showExpenseLine, setShowExpenseLine] = useState(false);
+  const [sortKey, setSortKey] = useState('annualEst');
+  const [sortDir, setSortDir] = useState('desc');
+  const [subPeriod, setSubPeriod] = useState('12m');
 
   const pnl = useApi(`/api/pnl${reconciled ? '?reconciled=true' : ''}`);
   const monthly = useApi(
@@ -276,7 +279,21 @@ export default function Financials() {
   const lastMonthIncomeLines = processGroupedLines(lastMonth.groupedIncomeLines);
 
   // Software subscriptions (from transaction-level QB query)
-  const softwareSubs = subscriptions.data?.vendors || [];
+  const allSubs12m = subscriptions.data?.vendors || [];
+  const allSubs30d = subscriptions.data?.vendors30d || [];
+  const softwareSubs = subPeriod === '30d' ? allSubs30d : allSubs12m;
+
+  const cycleSortKey = (key) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('desc'); }
+  };
+
+  const sortedSubs = [...softwareSubs].sort((a, b) => {
+    const mul = sortDir === 'asc' ? 1 : -1;
+    if (sortKey === 'name' || sortKey === 'freq') return mul * a[sortKey].localeCompare(b[sortKey]);
+    if (sortKey === 'status') return mul * (a.active === b.active ? 0 : a.active ? -1 : 1);
+    return mul * (a[sortKey] - b[sortKey]);
+  });
 
   const showAnnual = viewMode === 'Annual';
 
@@ -493,7 +510,7 @@ export default function Financials() {
                 )}
               </Card>
 
-              {/* Revenue breakdowns */}
+              {/* T-12 breakdowns */}
               <FinancialBreakdown
                 lines={t12IncomeLines}
                 divisor={t12MonthCount}
@@ -501,39 +518,37 @@ export default function Financials() {
                 label="Revenue Breakdown -- T-12 Monthly Avg"
                 isIncome
               />
-              {lastMonth.label && (
-                <FinancialBreakdown
-                  lines={lastMonthIncomeLines}
-                  divisor={1}
-                  totalAmount={lastMonth.totalIncome || 0}
-                  label={`Revenue Breakdown -- ${lastMonth.label}`}
-                  isIncome
-                  showToggle={false}
-                />
-              )}
-
-              {/* Expense breakdowns */}
               <FinancialBreakdown
                 lines={t12ExpenseLines}
                 divisor={t12MonthCount}
                 totalAmount={t12TotalExpenses}
                 label="Expense Breakdown -- T-12 Monthly Avg"
               />
+
+              {/* 1-Month Snapshot breakdowns */}
               {lastMonth.label && (
-                <FinancialBreakdown
-                  lines={lastMonthExpenseLines}
-                  divisor={1}
-                  totalAmount={lastMonth.totalExpenses || 0}
-                  label={`Expense Breakdown -- ${lastMonth.label}`}
-                  showToggle={false}
-                />
+                <>
+                  <FinancialBreakdown
+                    lines={lastMonthIncomeLines}
+                    divisor={1}
+                    totalAmount={lastMonth.totalIncome || 0}
+                    label={`Revenue -- 1-Month Snapshot (${lastMonth.label})`}
+                    isIncome
+                    showToggle={false}
+                  />
+                  <FinancialBreakdown
+                    lines={lastMonthExpenseLines}
+                    divisor={1}
+                    totalAmount={lastMonth.totalExpenses || 0}
+                    label={`Expense -- 1-Month Snapshot (${lastMonth.label})`}
+                    showToggle={false}
+                  />
+                </>
               )}
 
               {/* Software subscriptions */}
-              {subscriptions.loading && (
-                <Spinner label="Loading software subscriptions..." />
-              )}
-              {!subscriptions.loading && softwareSubs.length > 0 && (
+              {subscriptions.loading && <Spinner label="Loading software subscriptions..." />}
+              {!subscriptions.loading && sortedSubs.length > 0 && (
                 <Card>
                   <div className="flex items-center justify-between mb-5">
                     <div>
@@ -542,25 +557,54 @@ export default function Financials() {
                         Detected from QuickBooks -- billing frequency estimated from transaction history
                       </p>
                     </div>
-                    <p className="text-xs text-muted flex-shrink-0 ml-4">
-                      {softwareSubs.length} vendors
-                    </p>
+                    <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                      <p className="text-xs text-muted">
+                        {sortedSubs.filter(v => v.active).length} active / {sortedSubs.length} total
+                      </p>
+                      <div className="flex items-center gap-1 bg-bg rounded-lg p-1 border border-border">
+                        {[['30d', 'Last 30 Days'], ['12m', 'Last 12 Months']].map(([val, label]) => (
+                          <button
+                            key={val}
+                            onClick={() => setSubPeriod(val)}
+                            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                              subPeriod === val ? 'bg-purple text-white' : 'text-muted hover:text-white'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left border-b border-border">
-                        <th className="text-xs text-muted font-medium pb-3 pr-4">Vendor</th>
-                        <th className="text-xs text-muted font-medium pb-3 pr-4 text-right">Avg / mo</th>
-                        <th className="text-xs text-muted font-medium pb-3 pr-6 text-center">Billing</th>
-                        <th className="text-xs text-muted font-medium pb-3 text-right">Annual Est.</th>
+                        {[
+                          { key: 'name', label: 'Vendor', cls: 'pr-4' },
+                          { key: 'monthlyAvg', label: subPeriod === '30d' ? 'Last 30d' : 'Avg / mo', cls: 'pr-4 text-right' },
+                          { key: 'freq', label: 'Billing', cls: 'pr-4 text-center' },
+                          { key: 'status', label: 'Status', cls: 'pr-4 text-center' },
+                          { key: 'annualEst', label: 'Annual Est.', cls: 'text-right' },
+                        ].map(col => (
+                          <th
+                            key={col.key}
+                            onClick={() => cycleSortKey(col.key)}
+                            className={`text-xs text-muted font-medium pb-3 cursor-pointer select-none hover:text-white transition-colors ${col.cls}`}
+                          >
+                            {col.label}
+                            {sortKey === col.key && (
+                              <span className="ml-1 opacity-70">{sortDir === 'desc' ? '▾' : '▴'}</span>
+                            )}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {softwareSubs.map((sub, i) => (
+                      {sortedSubs.map((sub, i) => (
                         <tr key={i}>
                           <td className="py-2.5 pr-4 text-white">{sub.name}</td>
                           <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(sub.monthlyAvg)}</td>
-                          <td className="py-2.5 pr-6 text-center">
+                          <td className="py-2.5 pr-4 text-center">
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
                               sub.freq === 'Monthly' ? 'bg-purple/20 text-purple' :
                               sub.freq === 'Annual' ? 'bg-green/20 text-green' :
@@ -569,15 +613,24 @@ export default function Financials() {
                               {sub.freq}
                             </span>
                           </td>
+                          <td className="py-2.5 pr-4 text-center">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              sub.active ? 'bg-green/20 text-green' : 'bg-border text-muted'
+                            }`}>
+                              {sub.active ? 'Active' : 'Canceled'}
+                            </span>
+                          </td>
                           <td className="py-2.5 text-right text-white font-medium">{fmtDollars(sub.annualEst)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-border">
-                        <td className="pt-3 text-xs text-muted" colSpan={3}>Total annual software spend (estimated)</td>
+                        <td className="pt-3 text-xs text-muted" colSpan={4}>
+                          {subPeriod === '30d' ? 'Last 30 days annualized (active vendors)' : 'Active annual software spend (estimated)'}
+                        </td>
                         <td className="pt-3 text-right text-sm text-yellow font-semibold">
-                          {fmtDollars(softwareSubs.reduce((s, v) => s + v.annualEst, 0))}
+                          {fmtDollars(softwareSubs.filter(v => v.active).reduce((s, v) => s + v.annualEst, 0))}
                         </td>
                       </tr>
                     </tfoot>
