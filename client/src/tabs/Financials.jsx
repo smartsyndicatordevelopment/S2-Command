@@ -221,6 +221,7 @@ export default function Financials() {
   const [reconciled, setReconciled] = useState(true);
   const [showIncomeLine, setShowIncomeLine] = useState(false);
   const [showExpenseLine, setShowExpenseLine] = useState(false);
+  const [subSort, setSubSort] = useState({ col: 'monthlyAvg', dir: 'desc' });
 
   const pnl = useApi(`/api/pnl${reconciled ? '?reconciled=true' : ''}`);
   const monthly = useApi(
@@ -277,6 +278,26 @@ export default function Financials() {
 
   // Software subscriptions (from transaction-level QB query)
   const softwareSubs = subscriptions.data?.vendors || [];
+
+  const freqOrder = { Monthly: 0, Quarterly: 1, 'Semi-Annual': 2, Annual: 3 };
+  const sortedSubs = [...softwareSubs].sort((a, b) => {
+    const { col, dir } = subSort;
+    let av = a[col], bv = b[col];
+    if (col === 'freq') { av = freqOrder[av] ?? 99; bv = freqOrder[bv] ?? 99; }
+    if (col === 'active') { av = av ? 0 : 1; bv = bv ? 0 : 1; }
+    if (col === 'name') { av = av.toLowerCase(); bv = bv.toLowerCase(); }
+    if (av < bv) return dir === 'asc' ? -1 : 1;
+    if (av > bv) return dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const toggleSort = (col) =>
+    setSubSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' });
+
+  const SortIcon = ({ col }) => {
+    if (subSort.col !== col) return <span className="ml-1 text-border">↕</span>;
+    return <span className="ml-1 text-purple">{subSort.dir === 'asc' ? '↑' : '↓'}</span>;
+  };
 
   const showAnnual = viewMode === 'Annual';
 
@@ -530,15 +551,25 @@ export default function Financials() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left border-b border-border">
-                        <th className="text-xs text-muted font-medium pb-3 pr-4">Vendor</th>
-                        <th className="text-xs text-muted font-medium pb-3 pr-4 text-right">Avg / mo</th>
-                        <th className="text-xs text-muted font-medium pb-3 pr-4 text-center">Billing</th>
-                        <th className="text-xs text-muted font-medium pb-3 pr-4 text-center">Status</th>
-                        <th className="text-xs text-muted font-medium pb-3 text-right">Annual Est.</th>
+                        <th className="text-xs text-muted font-medium pb-3 pr-4 cursor-pointer hover:text-white select-none" onClick={() => toggleSort('name')}>
+                          Vendor<SortIcon col="name" />
+                        </th>
+                        <th className="text-xs text-muted font-medium pb-3 pr-4 text-right cursor-pointer hover:text-white select-none" onClick={() => toggleSort('monthlyAvg')}>
+                          Avg / mo<SortIcon col="monthlyAvg" />
+                        </th>
+                        <th className="text-xs text-muted font-medium pb-3 pr-4 text-center cursor-pointer hover:text-white select-none" onClick={() => toggleSort('freq')}>
+                          Billing<SortIcon col="freq" />
+                        </th>
+                        <th className="text-xs text-muted font-medium pb-3 pr-4 text-center cursor-pointer hover:text-white select-none" onClick={() => toggleSort('active')}>
+                          Status<SortIcon col="active" />
+                        </th>
+                        <th className="text-xs text-muted font-medium pb-3 text-right cursor-pointer hover:text-white select-none" onClick={() => toggleSort('annualEst')}>
+                          Annual Est.<SortIcon col="annualEst" />
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {softwareSubs.map((sub, i) => (
+                      {sortedSubs.map((sub, i) => (
                         <tr key={i}>
                           <td className="py-2.5 pr-4 text-white">{sub.name}</td>
                           <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(sub.monthlyAvg)}</td>
