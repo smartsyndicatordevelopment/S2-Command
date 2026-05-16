@@ -21,11 +21,15 @@ function stripAccountNumber(name) {
   return name.replace(/^\d[\d.]*\s+/, '');
 }
 
+function normalizeCase(name) {
+  return name.replace(/\b([A-Z]{2,})\b/g, w => w[0] + w.slice(1).toLowerCase());
+}
+
 // -- Module-level tree helpers --
 
 function mergeIntoTree(treeMap, items) {
   (items || []).forEach(item => {
-    const name = stripAccountNumber(item.name);
+    const name = normalizeCase(stripAccountNumber(item.name));
     if (!treeMap[name]) treeMap[name] = { name, amount: 0, children: {} };
     treeMap[name].amount += item.amount;
     mergeIntoTree(treeMap[name].children, item.children);
@@ -44,7 +48,7 @@ function processGroupedLines(items) {
     .filter(e => e.amount > 0)
     .sort((a, b) => b.amount - a.amount)
     .map(e => ({
-      name: stripAccountNumber(e.name),
+      name: normalizeCase(stripAccountNumber(e.name)),
       amount: e.amount,
       children: processGroupedLines(e.children),
     }));
