@@ -229,18 +229,13 @@ router.get('/software-subscriptions', async (req, res) => {
   const start = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString().split('T')[0];
   const end = now.toISOString().split('T')[0];
 
-  const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const MIN_LINE_AMOUNT = 30; // ignore small rebilling passthrough lines
-
   const vendorMonths = {};
   const vendorLastDate = {};
-  const vendorLast30 = {};
   const recordVendor = (name, month, amount, txnDate) => {
-    if (!name || !month || !(amount >= MIN_LINE_AMOUNT)) return;
+    if (!name || !month || !(amount > 0)) return;
     if (!vendorMonths[name]) vendorMonths[name] = {};
     vendorMonths[name][month] = (vendorMonths[name][month] || 0) + amount;
     if (!vendorLastDate[name] || txnDate > vendorLastDate[name]) vendorLastDate[name] = txnDate;
-    if (txnDate >= thirtyDaysAgo) vendorLast30[name] = (vendorLast30[name] || 0) + amount;
   };
 
   try {
@@ -286,8 +281,7 @@ router.get('/software-subscriptions', async (req, res) => {
         const freq = count >= 6 ? 'Monthly' : count >= 3 ? 'Quarterly' : count >= 2 ? 'Semi-Annual' : 'Annual';
         const active = lastMonth >= twoMonthsAgo;
         const lastTxnDate = vendorLastDate[name] || null;
-        const last30Total = vendorLast30[name] || 0;
-        return { name, monthlyAvg: avg, freq, count, annualEst: avg * 12, active, lastTxnDate, last30Total };
+        return { name, monthlyAvg: avg, freq, count, annualEst: avg * 12, active, lastTxnDate };
       })
       .filter(v => v.monthlyAvg >= 1)
       .sort((a, b) => b.monthlyAvg - a.monthlyAvg);

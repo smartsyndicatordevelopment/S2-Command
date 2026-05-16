@@ -620,13 +620,9 @@ export default function Financials() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-border">
-                        <td className="pt-3 text-xs text-muted" colSpan={4}>
-                          {recentOnly ? 'Total spent in last 30 days' : 'Total annual software spend (estimated)'}
-                        </td>
+                        <td className="pt-3 text-xs text-muted" colSpan={4}>Total annual software spend (estimated)</td>
                         <td className="pt-3 text-right text-sm text-yellow font-semibold">
-                          {recentOnly
-                            ? fmtDollars(filteredSubs.reduce((s, v) => s + v.last30Total, 0))
-                            : fmtDollars(filteredSubs.reduce((s, v) => s + v.annualEst, 0))}
+                          {fmtDollars(filteredSubs.reduce((s, v) => s + v.annualEst, 0))}
                         </td>
                       </tr>
                     </tfoot>
