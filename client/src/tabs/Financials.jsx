@@ -601,7 +601,10 @@ export default function Financials() {
                       {filteredSubs.map((sub, i) => (
                         <tr key={i}>
                           <td className="py-2.5 pr-4 text-white">{sub.name}</td>
-                          <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(sub.monthlyAvg)}</td>
+                          <td className="py-2.5 pr-4 text-right text-dim" title={`${sub.count} month${sub.count !== 1 ? 's' : ''} charged · ${fmtDollars(sub.monthlyAvg * sub.count)} total`}>
+                            {fmtDollars(sub.monthlyAvg)}
+                            <span className="ml-1 text-xs text-border">×{sub.count}</span>
+                          </td>
                           <td className="py-2.5 pr-4 text-center">
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
                               sub.freq === 'Monthly' ? 'bg-purple/20 text-purple' :
