@@ -274,7 +274,7 @@ router.get('/software-subscriptions', async (req, res) => {
         const count = amounts.length;
         const total = amounts.reduce((s, a) => s + a, 0);
         const avg = total / count;
-        const freq = count >= 10 ? 'Monthly' : count >= 4 ? 'Quarterly' : count >= 2 ? 'Semi-Annual' : 'Annual';
+        const freq = count >= 6 ? 'Monthly' : count >= 3 ? 'Quarterly' : count >= 2 ? 'Semi-Annual' : 'Annual';
         const active = lastMonth >= twoMonthsAgo;
         return { name, monthlyAvg: avg, freq, count, annualEst: avg * 12, active };
       })
