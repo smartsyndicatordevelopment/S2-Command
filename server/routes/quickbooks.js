@@ -230,10 +230,12 @@ router.get('/software-subscriptions', async (req, res) => {
   const end = now.toISOString().split('T')[0];
 
   const vendorMonths = {};
-  const recordVendor = (name, month, amount) => {
+  const vendorLastDate = {};
+  const recordVendor = (name, month, amount, txnDate) => {
     if (!name || !month || !(amount > 0)) return;
     if (!vendorMonths[name]) vendorMonths[name] = {};
     vendorMonths[name][month] = (vendorMonths[name][month] || 0) + amount;
+    if (!vendorLastDate[name] || txnDate > vendorLastDate[name]) vendorLastDate[name] = txnDate;
   };
 
   try {
@@ -248,19 +250,21 @@ router.get('/software-subscriptions', async (req, res) => {
 
     for (const txn of purchaseData?.QueryResponse?.Purchase || []) {
       const vendor = txn.EntityRef?.name || txn.Line?.[0]?.Description || '';
-      const month = (txn.TxnDate || '').substring(0, 7);
+      const txnDate = txn.TxnDate || '';
+      const month = txnDate.substring(0, 7);
       for (const line of txn.Line || []) {
         const account = line.AccountBasedExpenseLineDetail?.AccountRef?.name || '';
-        if (SOFTWARE_RE.test(account)) recordVendor(vendor, month, line.Amount);
+        if (SOFTWARE_RE.test(account)) recordVendor(vendor, month, line.Amount, txnDate);
       }
     }
 
     for (const txn of billData?.QueryResponse?.Bill || []) {
       const vendor = txn.VendorRef?.name || '';
-      const month = (txn.TxnDate || '').substring(0, 7);
+      const txnDate = txn.TxnDate || '';
+      const month = txnDate.substring(0, 7);
       for (const line of txn.Line || []) {
         const account = line.AccountBasedExpenseLineDetail?.AccountRef?.name || '';
-        if (SOFTWARE_RE.test(account)) recordVendor(vendor, month, line.Amount);
+        if (SOFTWARE_RE.test(account)) recordVendor(vendor, month, line.Amount, txnDate);
       }
     }
 
@@ -276,7 +280,8 @@ router.get('/software-subscriptions', async (req, res) => {
         const avg = total / count;
         const freq = count >= 6 ? 'Monthly' : count >= 3 ? 'Quarterly' : count >= 2 ? 'Semi-Annual' : 'Annual';
         const active = lastMonth >= twoMonthsAgo;
-        return { name, monthlyAvg: avg, freq, count, annualEst: avg * 12, active };
+        const lastTxnDate = vendorLastDate[name] || null;
+        return { name, monthlyAvg: avg, freq, count, annualEst: avg * 12, active, lastTxnDate };
       })
       .filter(v => v.monthlyAvg >= 1)
       .sort((a, b) => b.monthlyAvg - a.monthlyAvg);

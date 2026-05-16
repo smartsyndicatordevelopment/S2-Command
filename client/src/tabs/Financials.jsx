@@ -222,6 +222,8 @@ export default function Financials() {
   const [showIncomeLine, setShowIncomeLine] = useState(false);
   const [showExpenseLine, setShowExpenseLine] = useState(false);
   const [subSort, setSubSort] = useState({ col: 'monthlyAvg', dir: 'desc' });
+  const [hideInactive, setHideInactive] = useState(false);
+  const [recentOnly, setRecentOnly] = useState(false);
 
   const pnl = useApi(`/api/pnl${reconciled ? '?reconciled=true' : ''}`);
   const monthly = useApi(
@@ -290,6 +292,11 @@ export default function Financials() {
     if (av > bv) return dir === 'asc' ? 1 : -1;
     return 0;
   });
+
+  const thirty = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const filteredSubs = sortedSubs
+    .filter(s => !hideInactive || s.active)
+    .filter(s => !recentOnly || (s.lastTxnDate && s.lastTxnDate >= thirty));
 
   const toggleSort = (col) =>
     setSubSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' });
@@ -544,9 +551,27 @@ export default function Financials() {
                         Detected from QuickBooks -- billing frequency estimated from transaction history
                       </p>
                     </div>
-                    <p className="text-xs text-muted flex-shrink-0 ml-4">
-                      {softwareSubs.length} vendors
-                    </p>
+                    <div className="flex items-center gap-4 flex-shrink-0 ml-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <span className="text-xs text-muted whitespace-nowrap">Active only</span>
+                        <button
+                          onClick={() => setHideInactive(v => !v)}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${hideInactive ? 'bg-green' : 'bg-border'}`}
+                        >
+                          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${hideInactive ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                        </button>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <span className="text-xs text-muted whitespace-nowrap">Last 30 days</span>
+                        <button
+                          onClick={() => setRecentOnly(v => !v)}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${recentOnly ? 'bg-purple' : 'bg-border'}`}
+                        >
+                          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${recentOnly ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                        </button>
+                      </label>
+                      <p className="text-xs text-muted">{filteredSubs.length} vendors</p>
+                    </div>
                   </div>
                   <table className="w-full text-sm">
                     <thead>
@@ -569,7 +594,7 @@ export default function Financials() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {sortedSubs.map((sub, i) => (
+                      {filteredSubs.map((sub, i) => (
                         <tr key={i}>
                           <td className="py-2.5 pr-4 text-white">{sub.name}</td>
                           <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(sub.monthlyAvg)}</td>
@@ -597,7 +622,7 @@ export default function Financials() {
                       <tr className="border-t border-border">
                         <td className="pt-3 text-xs text-muted" colSpan={4}>Total annual software spend (estimated)</td>
                         <td className="pt-3 text-right text-sm text-yellow font-semibold">
-                          {fmtDollars(softwareSubs.reduce((s, v) => s + v.annualEst, 0))}
+                          {fmtDollars(filteredSubs.reduce((s, v) => s + v.annualEst, 0))}
                         </td>
                       </tr>
                     </tfoot>
