@@ -236,44 +236,6 @@ export default function Customers() {
         />
       </div>
 
-      {/* Row 2 -- subscriber + growth metrics */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard
-          label="All-Time Subscribers"
-          value={totalEverCount.toLocaleString()}
-          sub={`${totalCanceledAllTime.toLocaleString()} canceled all-time`}
-          accent="white"
-          tooltip={`${active.length} active + ${paused.length} paused + ${totalCanceledAllTime} canceled`}
-          loading={subs.loading}
-        />
-        <StatCard
-          label="Active Subscribers"
-          value={active.length.toLocaleString()}
-          sub={paused.length > 0 ? `+ ${paused.length} paused` : 'currently subscribed'}
-          accent="green"
-          tooltip={`${active.length} currently paying${paused.length > 0 ? `\n${paused.length} paused excluded` : ''}`}
-          loading={subs.loading}
-        />
-        <StatCard
-          label="Global Churn Rate"
-          value={`${churnRate.toFixed(1)}%`}
-          sub={`${totalCanceledAllTime} canceled of ${totalEverCount} total`}
-          accent={churnAccent}
-          tooltip={`${totalCanceledAllTime} canceled ÷ ${totalEverCount} total subscribers`}
-          loading={subs.loading}
-        />
-        <StatCard
-          label="Avg Subscription Length"
-          value={avgSubLengthMonths >= 24
-            ? `${(avgSubLengthMonths / 12).toFixed(1)} yr`
-            : `${avgSubLengthMonths.toFixed(1)} mo`}
-          sub="Active + canceled, all plans"
-          accent="white"
-          tooltip={`Sum of all sub lifespans ÷ ${totalEverCount} subscriptions\nActive = time so far; canceled = full lifespan`}
-          loading={subs.loading}
-        />
-      </div>
-
       {/* Active Subscriptions section -- starts open */}
       <Section title="Active Subscriptions" count={active.length} defaultOpen>
         {/* Upcoming Annual Renewals */}
@@ -507,6 +469,44 @@ export default function Customers() {
           </div>
         )}
       </Section>
+
+      {/* Subscriber health metrics */}
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard
+          label="All-Time Subscribers"
+          value={totalEverCount.toLocaleString()}
+          sub={`${totalCanceledAllTime.toLocaleString()} canceled all-time`}
+          accent="white"
+          tooltip={`${active.length} active + ${paused.length} paused + ${totalCanceledAllTime} canceled`}
+          loading={subs.loading}
+        />
+        <StatCard
+          label="Active Subscribers"
+          value={active.length.toLocaleString()}
+          sub={paused.length > 0 ? `+ ${paused.length} paused` : 'currently subscribed'}
+          accent="green"
+          tooltip={`${active.length} currently paying${paused.length > 0 ? `\n${paused.length} paused excluded` : ''}`}
+          loading={subs.loading}
+        />
+        <StatCard
+          label="Global Churn Rate"
+          value={`${churnRate.toFixed(1)}%`}
+          sub={`${totalCanceledAllTime} canceled of ${totalEverCount} total`}
+          accent={churnAccent}
+          tooltip={`${totalCanceledAllTime} canceled ÷ ${totalEverCount} total subscribers`}
+          loading={subs.loading}
+        />
+        <StatCard
+          label="Avg Subscription Length"
+          value={avgSubLengthMonths >= 24
+            ? `${(avgSubLengthMonths / 12).toFixed(1)} yr`
+            : `${avgSubLengthMonths.toFixed(1)} mo`}
+          sub="Active + canceled, all plans"
+          accent="white"
+          tooltip={`Sum of all sub lifespans ÷ ${totalEverCount} subscriptions\nActive = time so far; canceled = full lifespan`}
+          loading={subs.loading}
+        />
+      </div>
     </div>
   );
 }
