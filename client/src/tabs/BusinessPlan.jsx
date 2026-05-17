@@ -1,4 +1,5 @@
 import Card from '../components/ui/Card';
+import { useApi } from '../hooks/useApi';
 
 const VISION = 'The operating system for real estate capital raisers. Every syndicator running 2+ deals annually uses Smart Syndicator as their LP management layer.';
 
@@ -69,7 +70,78 @@ const statusColor = {
   upcoming: 'bg-border text-muted border-border',
 };
 
+function fmtUsd(n, decimals = 0) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: decimals }).format(n);
+}
+
+function fmtK(n) {
+  return n >= 1000 ? `$${(n / 1000).toFixed(1)}K` : fmtUsd(n);
+}
+
 export default function BusinessPlan() {
+  const subs = useApi('/api/subscriptions');
+  const mktg = useApi('/api/marketing-spend');
+
+  const mrr               = subs.data?.mrr || 0;
+  const uniqueClients     = subs.data?.uniqueClients || 0;
+  const avgLtv            = (subs.data?.avgLtv || 0) / 100;
+  const totalCanceled     = subs.data?.totalCanceledAllTime || 0;
+  const totalEver         = subs.data?.totalEverCount || 0;
+  const newLast3m         = subs.data?.newCustomersLast3Months || 0;
+  const spend3m           = mktg.data?.spend3m || 0;
+  const qbReady           = !mktg.data?.notConfigured && mktg.data !== null;
+
+  const arpu          = uniqueClients > 0 ? mrr / uniqueClients : 0;
+  const cac           = qbReady && newLast3m > 0 ? spend3m / newLast3m : 0;
+  const ltvCacRatio   = cac > 0 && avgLtv > 0 ? avgLtv / cac : 0;
+  const paybackMonths = arpu > 0 && cac > 0 ? cac / arpu : 0;
+  const churnPct      = totalEver > 0 ? (totalCanceled / totalEver) * 100 : 0;
+
+  const a = (val, fmt) => (val > 0 ? fmt(val) : '--');
+
+  const metrics = [
+    {
+      label: 'ARPU (Monthly)',
+      target: '$400-600',
+      actual: a(arpu, v => fmtUsd(v)),
+    },
+    {
+      label: 'LTV (24mo avg)',
+      target: '$8K-12K',
+      actual: a(avgLtv, v => fmtK(v)),
+    },
+    {
+      label: 'Target CAC',
+      target: 'under $500',
+      actual: a(cac, v => fmtUsd(v)),
+    },
+    {
+      label: 'LTV : CAC',
+      target: '16:1 minimum',
+      actual: a(ltvCacRatio, v => `${v.toFixed(1)}:1`),
+    },
+    {
+      label: 'Gross Margin',
+      target: '85%+',
+      actual: '--',
+    },
+    {
+      label: 'Payback Period',
+      target: 'under 2 months',
+      actual: a(paybackMonths, v => `${v.toFixed(1)} mo`),
+    },
+    {
+      label: 'Annual Churn Target',
+      target: 'under 15%',
+      actual: totalEver > 0 ? `${churnPct.toFixed(1)}%` : '--',
+    },
+    {
+      label: 'NPS Target',
+      target: '50+',
+      actual: '--',
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -134,21 +206,23 @@ export default function BusinessPlan() {
       </div>
 
       <Card>
-        <p className="text-xs font-medium uppercase tracking-widest text-muted mb-4">Unit Economics (Targets)</p>
+        <p className="text-xs font-medium uppercase tracking-widest text-muted mb-4">Unit Economics Targets</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'ARPU (Monthly)', value: '$400-600' },
-            { label: 'LTV (24mo avg)', value: '$8K-12K' },
-            { label: 'Target CAC', value: 'under $500' },
-            { label: 'LTV : CAC', value: '16:1 minimum' },
-            { label: 'Gross Margin', value: '85%+' },
-            { label: 'Payback Period', value: 'under 2 months' },
-            { label: 'Annual Churn Target', value: 'under 15%' },
-            { label: 'NPS Target', value: '50+' },
-          ].map(m => (
+          {metrics.map(m => (
             <div key={m.label} className="bg-bg border border-border rounded-lg p-3">
-              <p className="text-xs text-muted mb-1">{m.label}</p>
-              <p className="font-mono text-sm text-white font-semibold">{m.value}</p>
+              <p className="text-xs text-muted mb-2">{m.label}</p>
+              <div className="flex justify-between items-end gap-2">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted mb-0.5">Target</p>
+                  <p className="font-mono text-sm text-white font-semibold">{m.target}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] uppercase tracking-wider text-muted mb-0.5">Actual</p>
+                  <p className={`font-mono text-sm font-semibold ${m.actual === '--' ? 'text-muted' : 'text-yellow'}`}>
+                    {m.actual}
+                  </p>
+                </div>
+              </div>
             </div>
           ))}
         </div>
