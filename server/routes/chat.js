@@ -338,13 +338,40 @@ function buildSystemPrompt(ctx) {
 
 // -- Route --
 
-router.post('/chat', async (req, res) => {
-  const { message, history = [], context = {} } = req.body;
-  if (!message?.trim()) return res.status(400).json({ error: 'message required' });
+const VALID_ROLES = new Set(['user', 'assistant']);
+const MAX_MESSAGE_LEN = 4000;
+const MAX_HISTORY_ENTRIES = 40;
+const MAX_HISTORY_CONTENT_LEN = 10000;
 
-  const systemPrompt = buildSystemPrompt(context);
+router.post('/chat', async (req, res) => {
+  const { message, history, context } = req.body;
+
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ error: 'message required' });
+  }
+  if (message.length > MAX_MESSAGE_LEN) {
+    return res.status(400).json({ error: 'message too long (max 4000 characters)' });
+  }
+
+  // Only pass known numeric fields into the system prompt -- never raw client strings
+  const safeContext = {
+    mrr:               Number((context || {}).mrr)               || 0,
+    uniqueClients:     Number((context || {}).uniqueClients)     || 0,
+    subscriptionCount: Number((context || {}).subscriptionCount) || 0,
+    ytdRevenue:        Number((context || {}).ytdRevenue)        || 0,
+  };
+
+  // Validate history: only known roles, string content, bounded length
+  const safeHistory = Array.isArray(history)
+    ? history
+        .slice(-MAX_HISTORY_ENTRIES)
+        .filter(m => VALID_ROLES.has(m?.role) && typeof m?.content === 'string')
+        .map(m => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_CONTENT_LEN) }))
+    : [];
+
+  const systemPrompt = buildSystemPrompt(safeContext);
   let messages = [
-    ...history.map(m => ({ role: m.role, content: m.content })),
+    ...safeHistory,
     { role: 'user', content: message.trim() },
   ];
 

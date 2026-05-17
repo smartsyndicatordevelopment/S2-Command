@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const crypto = require('crypto');
 
 router.get('/status', (req, res) => {
   res.json({ authenticated: !!(req.session && req.session.authenticated) });
@@ -6,9 +7,18 @@ router.get('/status', (req, res) => {
 
 router.post('/login', (req, res) => {
   const { password } = req.body;
-  if (!password) return res.status(400).json({ error: 'Password required' });
 
-  if (password === process.env.DASHBOARD_PASSWORD) {
+  if (!password || typeof password !== 'string' || password.length > 200) {
+    return res.status(400).json({ error: 'Password required' });
+  }
+
+  const expected = process.env.DASHBOARD_PASSWORD || '';
+  // Timing-safe comparison prevents side-channel attacks
+  const match = expected.length > 0 &&
+    password.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(password), Buffer.from(expected));
+
+  if (match) {
     req.session.authenticated = true;
     return res.json({ success: true });
   }

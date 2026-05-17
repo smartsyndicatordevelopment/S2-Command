@@ -3,7 +3,7 @@ const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
 const path = require('path');
-
+const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const authRouter = require('./routes/auth');
@@ -18,6 +18,12 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 app.set('trust proxy', 1); // trust Railway's load balancer for HTTPS detection
 
+// Security headers -- CSP disabled until per-resource policy is tuned for the React SPA
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -29,7 +35,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Prevent caching on all pages containing sensitive data
+// Prevent caching on all responses containing sensitive data
 app.use((req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache');
   next();
@@ -47,7 +53,7 @@ app.use(session({
   cookie: {
     httpOnly: true,
     secure: !isDev,
-    sameSite: 'lax',
+    sameSite: 'strict',
     maxAge: 24 * 60 * 60 * 1000,
   },
 }));
@@ -64,6 +70,24 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many login attempts -- try again in 15 minutes' },
 });
 
+// Global rate limit for all authenticated API endpoints
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests -- please wait 15 minutes' },
+});
+
+// Stricter limit for the chat endpoint (each request calls Anthropic + possibly Stripe/QB)
+const chatLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Chat rate limit reached -- please wait before sending more messages' },
+});
+
 // Unauthenticated routes
 app.use('/auth/login', loginLimiter);
 app.use('/auth', authRouter);
@@ -75,10 +99,15 @@ function requireAuth(req, res, next) {
   return res.status(401).json({ error: 'Unauthorized' });
 }
 
-app.use('/api', requireAuth, stripeRouter);
-app.use('/api', requireAuth, quickbooksRouter);
-app.use('/api', requireAuth, salesTaxRouter);
-app.use('/api', requireAuth, chatRouter);
+// Apply auth and rate limiting once for all /api/* routes
+app.use('/api', requireAuth);
+app.use('/api', apiLimiter);
+app.use('/api/chat', chatLimiter); // additional limit on the Anthropic-backed endpoint
+
+app.use('/api', stripeRouter);
+app.use('/api', quickbooksRouter);
+app.use('/api', salesTaxRouter);
+app.use('/api', chatRouter);
 
 // Serve React build in production
 if (!isDev) {
