@@ -1,8 +1,6 @@
 import { useState, useMemo } from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { ChevronUp, ChevronDown, ChevronsUpDown, ChevronRight, Bell } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
-import Card from '../components/ui/Card';
 import StatCard from '../components/ui/StatCard';
 import Spinner from '../components/ui/Spinner';
 import ErrorState from '../components/ui/ErrorState';
@@ -23,8 +21,6 @@ function mrrOf(sub) {
 function fmtDate(ts) {
   return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-
-const COLORS = ['#5c3ff4', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
 
 function useSortable(defaultKey, defaultDir = 'asc') {
   const [sortKey, setSortKey] = useState(defaultKey);
@@ -71,17 +67,6 @@ function SortTh({ label, colKey, sortKey, sortDir, onSort, className = '', align
   );
 }
 
-const DonutTooltip = ({ active, payload }) => {
-  if (!active || !payload?.length) return null;
-  const d = payload[0];
-  return (
-    <div className="bg-card border border-border rounded-lg px-3 py-2 text-xs">
-      <p className="text-white font-medium">{d.name}</p>
-      <p className="text-muted">{d.value} subscription{d.value !== 1 ? 's' : ''}</p>
-    </div>
-  );
-};
-
 function DaysChip({ days }) {
   if (days <= 7)  return <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>{days}d</span>;
   if (days <= 21) return <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>{days}d</span>;
@@ -120,6 +105,7 @@ function Section({ title, count, defaultOpen = false, children }) {
 
 export default function Customers() {
   const subs = useApi('/api/subscriptions');
+  const pnl  = useApi('/api/pnl');
 
   const renewalSort  = useSortable('days', 'asc');
   const subsSort     = useSortable('created', 'desc');
@@ -136,6 +122,12 @@ export default function Customers() {
   const totalCanceledAllTime  = subs.data?.totalCanceledAllTime || 0;
   const avgLtv                = subs.data?.avgLtv || 0;
   const avgSubLengthMonths    = subs.data?.avgSubLengthMonths || 0;
+  const newCustomersThisYear  = subs.data?.newCustomersThisYear || 0;
+
+  const thisYear = new Date().getFullYear();
+  const currentYearExpenses = pnl.data?.years?.find(y => y.year === thisYear)?.totalExpenses || 0;
+  const cac = newCustomersThisYear > 0 ? currentYearExpenses / newCustomersThisYear : 0;
+  const qbConfigured = !pnl.data?.notConfigured;
 
   const upcomingRenewals = useMemo(() => {
     const now    = Math.floor(Date.now() / 1000);
@@ -150,20 +142,6 @@ export default function Customers() {
 
   if (subs.loading) return <Spinner label="Loading subscriptions..." />;
   if (subs.error)   return <ErrorState message={subs.error} onRetry={subs.refetch} />;
-
-  // Donut chart data
-  const planCounts = {};
-  active.forEach(s => { planCounts[s.planName] = (planCounts[s.planName] || 0) + 1; });
-  const planData = Object.entries(planCounts)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
-
-  const intervalCounts = {};
-  active.forEach(s => {
-    const label = s.interval === 'year' ? 'Annual' : 'Monthly';
-    intervalCounts[label] = (intervalCounts[label] || 0) + 1;
-  });
-  const intervalData = Object.entries(intervalCounts).map(([name, value]) => ({ name, value }));
 
   // Sorted table data
   const sortedSubs = subsSort.sorted(active, {
@@ -219,37 +197,28 @@ export default function Customers() {
         <p className="text-xs text-muted mt-0.5">{active.length} active subscriptions -- live from Stripe</p>
       </div>
 
-      {/* Top-line subscriber stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard
-          label="All-Time Subscribers"
-          value={totalEverCount.toLocaleString()}
-          sub={`${totalCanceledAllTime.toLocaleString()} canceled all-time`}
-          accent="white"
-        />
-        <StatCard
-          label="Active Subscribers"
-          value={active.length.toLocaleString()}
-          sub={paused.length > 0 ? `+ ${paused.length} paused` : 'currently subscribed'}
-          accent="green"
-        />
-        <StatCard
-          label="Global Churn Rate"
-          value={`${churnRate.toFixed(1)}%`}
-          sub={`${totalCanceledAllTime} canceled of ${totalEverCount} total`}
-          accent={churnAccent}
-        />
-      </div>
-
-      {/* MRR + ARR + LTV + avg length -- active only for MRR/ARR */}
+      {/* Row 1 -- revenue metrics */}
       <div className="grid grid-cols-4 gap-4">
-        <StatCard label="MRR" value={fmtMrr(totalMrr)} sub={`${active.length} active subscriptions`} accent="purple" />
-        <StatCard label="ARR" value={fmtMrr(totalMrr * 12)} sub="Annualized" accent="purple" />
+        <StatCard
+          label="MRR"
+          value={fmtMrr(totalMrr)}
+          sub={`${active.length} active subscriptions`}
+          accent="purple"
+          tooltip={`${active.length} active subs\nMonthly rates summed; annual plans ÷ 12`}
+        />
+        <StatCard
+          label="ARR"
+          value={fmtMrr(totalMrr * 12)}
+          sub="Annualized"
+          accent="purple"
+          tooltip={`MRR (${fmtMrr(totalMrr)}) × 12`}
+        />
         <StatCard
           label="Avg Lifetime Value"
           value={fmt(Math.round(avgLtv))}
           sub="Per unique customer, all-time"
           accent="white"
+          tooltip={`All-time paid invoices ÷ ${totalEverCount} unique customers`}
         />
         <StatCard
           label="Avg Subscription Length"
@@ -258,6 +227,41 @@ export default function Customers() {
             : `${avgSubLengthMonths.toFixed(1)} mo`}
           sub="Active + canceled, all plans"
           accent="white"
+          tooltip={`Sum of all sub lifespans ÷ ${totalEverCount} subscriptions\nActive = time so far; canceled = full lifespan`}
+        />
+      </div>
+
+      {/* Row 2 -- subscriber + growth metrics */}
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard
+          label="All-Time Subscribers"
+          value={totalEverCount.toLocaleString()}
+          sub={`${totalCanceledAllTime.toLocaleString()} canceled all-time`}
+          accent="white"
+          tooltip={`${active.length} active + ${paused.length} paused + ${totalCanceledAllTime} canceled`}
+        />
+        <StatCard
+          label="Active Subscribers"
+          value={active.length.toLocaleString()}
+          sub={paused.length > 0 ? `+ ${paused.length} paused` : 'currently subscribed'}
+          accent="green"
+          tooltip={`${active.length} currently paying${paused.length > 0 ? `\n${paused.length} paused excluded` : ''}`}
+        />
+        <StatCard
+          label="Global Churn Rate"
+          value={`${churnRate.toFixed(1)}%`}
+          sub={`${totalCanceledAllTime} canceled of ${totalEverCount} total`}
+          accent={churnAccent}
+          tooltip={`${totalCanceledAllTime} canceled ÷ ${totalEverCount} total subscribers`}
+        />
+        <StatCard
+          label="Customer Acquisition Cost"
+          value={qbConfigured && cac > 0 ? fmtMrr(cac) : '--'}
+          sub={`${newCustomersThisYear} new customers ${thisYear}`}
+          accent="white"
+          tooltip={qbConfigured
+            ? `QB expenses ${thisYear} (${fmtMrr(currentYearExpenses)}) ÷ ${newCustomersThisYear} new customers`
+            : 'Connect QuickBooks to calculate CAC'}
         />
       </div>
 
@@ -307,53 +311,6 @@ export default function Customers() {
             </p>
           </div>
         )}
-
-        {/* Donut charts */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card>
-            <p className="text-xs font-medium uppercase tracking-widest text-muted mb-4">By Plan</p>
-            <ResponsiveContainer width="100%" height={160}>
-              <PieChart>
-                <Pie data={planData} cx="50%" cy={75} innerRadius={50} outerRadius={70} dataKey="value" paddingAngle={2}>
-                  {planData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip content={<DonutTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-3 space-y-2">
-              {planData.map((d, i) => (
-                <div key={d.name} className="flex items-center gap-2 text-xs">
-                  <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                  <span className="text-dim flex-1">{d.name}</span>
-                  <span className="font-mono text-white">{d.value}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card>
-            <p className="text-xs font-medium uppercase tracking-widest text-muted mb-4">By Billing Cycle</p>
-            <div className="flex items-center gap-6">
-              <ResponsiveContainer width={160} height={160}>
-                <PieChart>
-                  <Pie data={intervalData} cx={75} cy={75} innerRadius={50} outerRadius={70} dataKey="value" paddingAngle={2}>
-                    {intervalData.map((_, i) => <Cell key={i} fill={i === 0 ? '#5c3ff4' : '#22c55e'} />)}
-                  </Pie>
-                  <Tooltip content={<DonutTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-2">
-                {intervalData.map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-2 text-xs">
-                    <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: i === 0 ? '#5c3ff4' : '#22c55e' }} />
-                    <span className="text-dim">{d.name}</span>
-                    <span className="font-mono text-white ml-auto">{d.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-        </div>
 
         {/* Active subscriptions table */}
         <div className="overflow-x-auto">

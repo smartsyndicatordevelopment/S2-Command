@@ -89,8 +89,9 @@ router.get('/subscriptions', async (req, res) => {
     const now = Math.floor(Date.now() / 1000);
     const twelveMonthsAgo = now - 365 * 24 * 60 * 60;
 
-    // Fetch all subscription statuses, recent paid invoices, and all-time invoices in parallel
-    const [rawActive, rawPaused, rawCanceled, recentInvoices, allTimeInvoices] = await Promise.all([
+    // Fetch all subscription statuses and all-time paid invoices in parallel
+    // Single invoice fetch (all-time, customer expanded) covers both spend tracking and one-offs
+    const [rawActive, rawPaused, rawCanceled, allInvoices] = await Promise.all([
       listAll((cursor) =>
         stripe.subscriptions.list({
           status: 'active',
@@ -119,17 +120,8 @@ router.get('/subscriptions', async (req, res) => {
       listAll((cursor) =>
         stripe.invoices.list({
           status: 'paid',
-          created: { gte: twelveMonthsAgo },
           limit: 100,
           expand: ['data.customer'],
-          ...(cursor && { starting_after: cursor }),
-        })
-      ),
-      // All-time invoices (no date filter) for total spend per customer
-      listAll((cursor) =>
-        stripe.invoices.list({
-          status: 'paid',
-          limit: 100,
           ...(cursor && { starting_after: cursor }),
         })
       ),
@@ -160,7 +152,7 @@ router.get('/subscriptions', async (req, res) => {
 
     // Total all-time spend per customer from paid invoices (cents)
     const customerSpend = {};
-    allTimeInvoices.forEach(inv => {
+    allInvoices.forEach(inv => {
       const custId = typeof inv.customer === 'string' ? inv.customer : inv.customer?.id;
       if (custId && allowedCustomerIds.has(custId) && inv.total > 0) {
         customerSpend[custId] = (customerSpend[custId] || 0) + inv.total;
@@ -181,6 +173,11 @@ router.get('/subscriptions', async (req, res) => {
           return s + (end - sub.created) / (30.44 * 24 * 3600);
         }, 0) / allSubsForLength.length
       : 0;
+
+    // New customers acquired in the current calendar year
+    const thisYearStart = Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000);
+    const newCustomersThisYear = [...trueActive, ...allPaused, ...allCanceled]
+      .filter(s => s.created >= thisYearStart).length;
 
     // Resolve invoice amounts for each group in parallel (N concurrent lookups per group)
     const resolveGroup = (subs) =>
@@ -206,8 +203,8 @@ router.get('/subscriptions', async (req, res) => {
 
     const uniqueClients = new Set(activeResults.map(s => s.customerId)).size;
 
-    // One-off transactions: paid invoices with no linked subscription
-    const oneOffResults = recentInvoices
+    // One-off transactions: paid invoices with no linked subscription (all-time)
+    const oneOffResults = allInvoices
       .filter(inv => !inv.subscription && (inv.customer?.email || '').toLowerCase() !== OWNER_EMAIL && inv.total > 0)
       .map(inv => ({
         id: inv.id,
@@ -230,6 +227,7 @@ router.get('/subscriptions', async (req, res) => {
       totalCanceledAllTime,
       avgLtv,
       avgSubLengthMonths,
+      newCustomersThisYear,
     });
   } catch (err) {
     console.error('Stripe /subscriptions error:', err.message);
