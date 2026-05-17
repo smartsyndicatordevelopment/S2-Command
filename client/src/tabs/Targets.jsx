@@ -1,6 +1,5 @@
 import { useApi } from '../hooks/useApi';
 import Card from '../components/ui/Card';
-import Spinner from '../components/ui/Spinner';
 import ErrorState from '../components/ui/ErrorState';
 
 const TARGET_MRR = 20000;
@@ -13,7 +12,6 @@ function fmtDollars(val) {
 export default function Targets() {
   const subs = useApi('/api/subscriptions');
 
-  if (subs.loading) return <Spinner label="Loading..." />;
   if (subs.error) return <ErrorState message={subs.error} onRetry={subs.refetch} />;
 
   const mrr = subs.data?.mrr || 0;
@@ -56,35 +54,43 @@ export default function Targets() {
                 className="w-14 rounded-t-sm relative"
                 style={{ height: `${BAR_MAX_PX}px`, backgroundColor: '#2a2a3a', borderRadius: '4px 4px 0 0' }}
               >
-                <div
-                  className="absolute inset-x-0 bottom-0 transition-all"
-                  style={{
-                    height: `${actualBarPx}px`,
-                    backgroundColor: pct >= 1 ? '#22c55e' : '#5c3ff4',
-                    borderRadius: actualBarPx === BAR_MAX_PX ? '4px 4px 0 0' : '2px 2px 0 0',
-                  }}
-                />
+                {!subs.loading && (
+                  <div
+                    className="absolute inset-x-0 bottom-0 transition-all"
+                    style={{
+                      height: `${actualBarPx}px`,
+                      backgroundColor: pct >= 1 ? '#22c55e' : '#5c3ff4',
+                      borderRadius: actualBarPx === BAR_MAX_PX ? '4px 4px 0 0' : '2px 2px 0 0',
+                    }}
+                  />
+                )}
               </div>
-              <p className="font-mono text-sm text-purple">{fmtDollars(mrr)}</p>
+              {subs.loading
+                ? <span className="w-4 h-4 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+                : <p className="font-mono text-sm text-purple">{fmtDollars(mrr)}</p>}
             </div>
           </div>
 
           <div className="mt-8 space-y-2 border-t border-border pt-5">
             <div className="flex justify-between text-xs">
               <span className="text-muted">Progress</span>
-              <span className="font-mono text-white">{Math.round(pct * 100)}%</span>
+              {subs.loading
+                ? <span className="w-3 h-3 border border-purple border-t-transparent rounded-full animate-spin" />
+                : <span className="font-mono text-white">{Math.round(pct * 100)}%</span>}
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted">Gap to close</span>
-              <span className={`font-mono ${gap === 0 ? 'text-green' : 'text-yellow'}`}>{fmtDollars(gap)}</span>
+              {subs.loading
+                ? <span className="w-3 h-3 border border-yellow border-t-transparent rounded-full animate-spin" />
+                : <span className={`font-mono ${gap === 0 ? 'text-green' : 'text-yellow'}`}>{fmtDollars(gap)}</span>}
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted">New clients needed (avg)</span>
-              <span className="font-mono text-dim">
-                {uniqueClients > 0 && mrr > 0
-                  ? Math.ceil(gap / (mrr / uniqueClients))
-                  : '--'}
-              </span>
+              {subs.loading
+                ? <span className="w-3 h-3 border border-muted border-t-transparent rounded-full animate-spin" />
+                : <span className="font-mono text-dim">
+                    {uniqueClients > 0 && mrr > 0 ? Math.ceil(gap / (mrr / uniqueClients)) : '--'}
+                  </span>}
             </div>
           </div>
         </Card>
@@ -103,33 +109,43 @@ export default function Targets() {
             <div className="flex flex-col items-center gap-2">
               <p className="text-xs text-muted">Actual</p>
               <div className="w-14 relative" style={{ height: `${BAR_MAX_PX}px`, backgroundColor: '#2a2a3a', borderRadius: '4px 4px 0 0' }}>
-                <div
-                  className="absolute inset-x-0 bottom-0 transition-all"
-                  style={{
-                    height: `${Math.round(clientPct * BAR_MAX_PX)}px`,
-                    backgroundColor: clientPct >= 1 ? '#22c55e' : '#5c3ff4',
-                    borderRadius: '2px 2px 0 0',
-                  }}
-                />
+                {!subs.loading && (
+                  <div
+                    className="absolute inset-x-0 bottom-0 transition-all"
+                    style={{
+                      height: `${Math.round(clientPct * BAR_MAX_PX)}px`,
+                      backgroundColor: clientPct >= 1 ? '#22c55e' : '#5c3ff4',
+                      borderRadius: '2px 2px 0 0',
+                    }}
+                  />
+                )}
               </div>
-              <p className="font-mono text-sm text-purple">{uniqueClients}</p>
+              {subs.loading
+                ? <span className="w-4 h-4 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+                : <p className="font-mono text-sm text-purple">{uniqueClients}</p>}
             </div>
           </div>
 
           <div className="mt-8 space-y-2 border-t border-border pt-5">
             <div className="flex justify-between text-xs">
               <span className="text-muted">Progress</span>
-              <span className="font-mono text-white">{Math.round(clientPct * 100)}%</span>
+              {subs.loading
+                ? <span className="w-3 h-3 border border-purple border-t-transparent rounded-full animate-spin" />
+                : <span className="font-mono text-white">{Math.round(clientPct * 100)}%</span>}
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted">Clients still needed</span>
-              <span className="font-mono text-yellow">{Math.max(0, clientTarget - uniqueClients)}</span>
+              {subs.loading
+                ? <span className="w-3 h-3 border border-yellow border-t-transparent rounded-full animate-spin" />
+                : <span className="font-mono text-yellow">{Math.max(0, clientTarget - uniqueClients)}</span>}
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted">Avg MRR per client</span>
-              <span className="font-mono text-dim">
-                {uniqueClients > 0 ? fmtDollars(mrr / uniqueClients) : '--'}
-              </span>
+              {subs.loading
+                ? <span className="w-3 h-3 border border-muted border-t-transparent rounded-full animate-spin" />
+                : <span className="font-mono text-dim">
+                    {uniqueClients > 0 ? fmtDollars(mrr / uniqueClients) : '--'}
+                  </span>}
             </div>
           </div>
         </Card>
@@ -148,24 +164,32 @@ export default function Targets() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {[5000, 10000, 15000, 20000, 30000, 50000].map(target => {
-              const achieved = mrr >= target;
-              const diff = target - mrr;
-              return (
-                <tr key={target}>
-                  <td className="py-2.5 pr-4 text-dim">{fmtDollars(target)}/mo</td>
-                  <td className="py-2.5 pr-4 font-mono text-right text-dim">{fmtDollars(target)}</td>
-                  <td className={`py-2.5 pr-4 font-mono text-right ${achieved ? 'text-green' : 'text-yellow'}`}>
-                    {achieved ? 'Achieved' : fmtDollars(diff)}
-                  </td>
-                  <td className="py-2.5 text-right">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${achieved ? 'bg-green/10 text-green' : 'bg-border text-muted'}`}>
-                      {achieved ? 'Done' : 'Pending'}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
+            {subs.loading ? (
+              <tr>
+                <td colSpan={4} className="py-6 text-center">
+                  <span className="inline-block w-5 h-5 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+                </td>
+              </tr>
+            ) : (
+              [5000, 10000, 15000, 20000, 30000, 50000].map(target => {
+                const achieved = mrr >= target;
+                const diff = target - mrr;
+                return (
+                  <tr key={target}>
+                    <td className="py-2.5 pr-4 text-dim">{fmtDollars(target)}/mo</td>
+                    <td className="py-2.5 pr-4 font-mono text-right text-dim">{fmtDollars(target)}</td>
+                    <td className={`py-2.5 pr-4 font-mono text-right ${achieved ? 'text-green' : 'text-yellow'}`}>
+                      {achieved ? 'Achieved' : fmtDollars(diff)}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${achieved ? 'bg-green/10 text-green' : 'bg-border text-muted'}`}>
+                        {achieved ? 'Done' : 'Pending'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </Card>

@@ -5,7 +5,6 @@ import {
 } from 'recharts';
 import { useApi } from '../hooks/useApi';
 import Card from '../components/ui/Card';
-import Spinner from '../components/ui/Spinner';
 import ErrorState from '../components/ui/ErrorState';
 
 function fmtK(val) {
@@ -334,33 +333,40 @@ export default function Financials() {
       {/* ── ANNUAL VIEW ── */}
       {showAnnual && (
         <>
-          {pnl.loading ? <Spinner label="Loading QuickBooks data..." /> :
-           pnl.error ? <ErrorState message={pnl.error} onRetry={pnl.refetch} /> : (
+          {pnl.error ? <ErrorState message={pnl.error} onRetry={pnl.refetch} /> : (
             <>
               <Card>
                 <p className="text-xs font-medium uppercase tracking-widest text-muted mb-5">Annual P&L -- All Years</p>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={annualChartData} barGap={4} barCategoryGap="30%">
-                    <XAxis dataKey="year" tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={fmtK} tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
-                    <Tooltip content={<AnnualTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                    <Bar dataKey="Income" fill="#5c3ff4" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Expenses" fill="#f59e0b" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Net Income" radius={[3, 3, 0, 0]}>
-                      {annualChartData.map((entry, i) => (
-                        <Cell key={i} fill={entry['Net Income'] >= 0 ? '#22c55e' : '#ef4444'} />
+                {pnl.loading ? (
+                  <div className="h-60 flex items-center justify-center">
+                    <span className="w-6 h-6 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height={240}>
+                      <BarChart data={annualChartData} barGap={4} barCategoryGap="30%">
+                        <XAxis dataKey="year" tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} />
+                        <YAxis tickFormatter={fmtK} tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
+                        <Tooltip content={<AnnualTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+                        <Bar dataKey="Income" fill="#5c3ff4" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="Expenses" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="Net Income" radius={[3, 3, 0, 0]}>
+                          {annualChartData.map((entry, i) => (
+                            <Cell key={i} fill={entry['Net Income'] >= 0 ? '#22c55e' : '#ef4444'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="flex items-center gap-5 mt-2">
+                      {[['Income', '#5c3ff4'], ['Expenses', '#f59e0b'], ['Net Income', '#22c55e']].map(([l, color]) => (
+                        <div key={l} className="flex items-center gap-1.5">
+                          <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
+                          <span className="text-xs text-muted">{l}</span>
+                        </div>
                       ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="flex items-center gap-5 mt-2">
-                  {[['Income', '#5c3ff4'], ['Expenses', '#f59e0b'], ['Net Income', '#22c55e']].map(([l, color]) => (
-                    <div key={l} className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
-                      <span className="text-xs text-muted">{l}</span>
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
               </Card>
 
               <FinancialBreakdown
@@ -382,18 +388,26 @@ export default function Financials() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {[...years].reverse().map(y => (
-                      <tr key={y.year}>
-                        <td className="py-2.5 pr-4 text-white font-medium">
-                          {y.year}{y.year === currentYear ? <span className="text-purple text-xs ml-1">YTD</span> : ''}
-                        </td>
-                        <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(y.totalIncome)}</td>
-                        <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(y.totalExpenses)}</td>
-                        <td className={`py-2.5 text-right font-semibold ${y.netIncome >= 0 ? 'text-green' : 'text-red'}`}>
-                          {fmtDollars(y.netIncome)}
+                    {pnl.loading ? (
+                      <tr>
+                        <td colSpan={4} className="py-8 text-center">
+                          <span className="inline-block w-5 h-5 border-2 border-purple border-t-transparent rounded-full animate-spin" />
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      [...years].reverse().map(y => (
+                        <tr key={y.year}>
+                          <td className="py-2.5 pr-4 text-white font-medium">
+                            {y.year}{y.year === currentYear ? <span className="text-purple text-xs ml-1">YTD</span> : ''}
+                          </td>
+                          <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(y.totalIncome)}</td>
+                          <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(y.totalExpenses)}</td>
+                          <td className={`py-2.5 text-right font-semibold ${y.netIncome >= 0 ? 'text-green' : 'text-red'}`}>
+                            {fmtDollars(y.netIncome)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </Card>
@@ -405,8 +419,7 @@ export default function Financials() {
       {/* ── T-12 VIEW ── */}
       {!showAnnual && (
         <>
-          {monthly.loading ? <Spinner label="Loading 12 months of data..." /> :
-           monthly.error ? <ErrorState message={monthly.error} onRetry={monthly.refetch} /> : (
+          {monthly.error ? <ErrorState message={monthly.error} onRetry={monthly.refetch} /> : (
             <>
               {/* Stat cards */}
               <div className="grid grid-cols-3 gap-3">
@@ -417,9 +430,13 @@ export default function Financials() {
                 ].map(({ label, value, color }) => (
                   <div key={label} className="bg-card border border-border rounded-lg p-4">
                     <p className="text-xs text-muted mb-2">{label}</p>
-                    <p className={`text-lg font-bold ${color || (value >= 0 ? 'text-green' : 'text-red')}`}>
-                      {fmtDollars(value)}
-                    </p>
+                    {monthly.loading ? (
+                      <span className="inline-block w-5 h-5 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <p className={`text-lg font-bold ${color || (value >= 0 ? 'text-green' : 'text-red')}`}>
+                        {fmtDollars(value)}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -429,30 +446,38 @@ export default function Financials() {
                 <p className="text-xs font-medium uppercase tracking-widest text-muted mb-5">
                   Monthly P&L -- Trailing 12 Months
                 </p>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={t12ChartData} barGap={3} barCategoryGap="25%">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={fmtK} tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
-                    <Tooltip content={<MonthlyTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                    <Bar dataKey="Income" name="Income" fill="#5c3ff4" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Expenses" name="Expenses" fill="#f59e0b" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Net Income" name="Net Income" radius={[3, 3, 0, 0]}>
-                      {t12ChartData.map((entry, i) => (
-                        <Cell key={i} fill={entry['Net Income'] >= 0 ? '#22c55e' : '#ef4444'} />
+                {monthly.loading ? (
+                  <div className="h-60 flex items-center justify-center">
+                    <span className="w-6 h-6 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height={240}>
+                      <BarChart data={t12ChartData} barGap={3} barCategoryGap="25%">
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <YAxis tickFormatter={fmtK} tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
+                        <Tooltip content={<MonthlyTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+                        <Bar dataKey="Income" name="Income" fill="#5c3ff4" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="Expenses" name="Expenses" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="Net Income" name="Net Income" radius={[3, 3, 0, 0]}>
+                          {t12ChartData.map((entry, i) => (
+                            <Cell key={i} fill={entry['Net Income'] >= 0 ? '#22c55e' : '#ef4444'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="flex items-center gap-5 mt-2">
+                      {[['Income', '#5c3ff4'], ['Expenses', '#f59e0b'], ['Net Income', '#22c55e']].map(([l, color]) => (
+                        <div key={l} className="flex items-center gap-1.5">
+                          <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
+                          <span className="text-xs text-muted">{l}</span>
+                        </div>
                       ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="flex items-center gap-5 mt-2">
-                  {[['Income', '#5c3ff4'], ['Expenses', '#f59e0b'], ['Net Income', '#22c55e']].map(([l, color]) => (
-                    <div key={l} className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
-                      <span className="text-xs text-muted">{l}</span>
+                      {reconciled && <span className="text-xs text-muted ml-auto">Reconciled months only</span>}
                     </div>
-                  ))}
-                  {reconciled && <span className="text-xs text-muted ml-auto">Reconciled months only</span>}
-                </div>
+                  </>
+                )}
               </Card>
 
               {/* Net income trend with optional income / expense overlays */}
@@ -484,34 +509,42 @@ export default function Financials() {
                     </button>
                   </div>
                 </div>
-                <ResponsiveContainer width="100%" height={200}>
-                  <ComposedChart data={t12ChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={fmtK} tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
-                    <Tooltip content={<MonthlyTooltip />} cursor={{ stroke: '#3a3a4a', strokeWidth: 1 }} />
-                    <ReferenceLine y={0} stroke="#3a3a4a" strokeDasharray="4 4" />
-                    {showIncomeLine && (
-                      <Line type="monotone" dataKey="Income" name="Income" stroke="#5c3ff4"
-                        strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} strokeDasharray="5 3" />
+                {monthly.loading ? (
+                  <div className="h-[200px] flex items-center justify-center">
+                    <span className="w-6 h-6 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <ComposedChart data={t12ChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <YAxis tickFormatter={fmtK} tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
+                        <Tooltip content={<MonthlyTooltip />} cursor={{ stroke: '#3a3a4a', strokeWidth: 1 }} />
+                        <ReferenceLine y={0} stroke="#3a3a4a" strokeDasharray="4 4" />
+                        {showIncomeLine && (
+                          <Line type="monotone" dataKey="Income" name="Income" stroke="#5c3ff4"
+                            strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} strokeDasharray="5 3" />
+                        )}
+                        {showExpenseLine && (
+                          <Line type="monotone" dataKey="Expenses" name="Expenses" stroke="#f59e0b"
+                            strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} strokeDasharray="5 3" />
+                        )}
+                        <Line
+                          type="monotone" dataKey="Net Income" name="Net Income"
+                          stroke="#9ca3af" strokeWidth={2}
+                          dot={({ cx, cy, payload }) => {
+                            const fill = payload['Net Income'] >= 0 ? '#22c55e' : '#ef4444';
+                            return <circle key={cx} cx={cx} cy={cy} r={4} fill={fill} stroke="none" />;
+                          }}
+                          activeDot={{ r: 5, fill: '#ffffff' }}
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                    {months.some(m => m.isMTD) && (
+                      <p className="text-xs text-muted mt-2">* Current month is MTD</p>
                     )}
-                    {showExpenseLine && (
-                      <Line type="monotone" dataKey="Expenses" name="Expenses" stroke="#f59e0b"
-                        strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} strokeDasharray="5 3" />
-                    )}
-                    <Line
-                      type="monotone" dataKey="Net Income" name="Net Income"
-                      stroke="#9ca3af" strokeWidth={2}
-                      dot={({ cx, cy, payload }) => {
-                        const fill = payload['Net Income'] >= 0 ? '#22c55e' : '#ef4444';
-                        return <circle key={cx} cx={cx} cy={cy} r={4} fill={fill} stroke="none" />;
-                      }}
-                      activeDot={{ r: 5, fill: '#ffffff' }}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-                {months.some(m => m.isMTD) && (
-                  <p className="text-xs text-muted mt-2">* Current month is MTD</p>
+                  </>
                 )}
               </Card>
 
@@ -531,7 +564,7 @@ export default function Financials() {
               />
 
               {/* 1-Month Snapshot breakdowns */}
-              {lastMonth.label && (
+              {!monthly.loading && lastMonth.label && (
                 <>
                   <FinancialBreakdown
                     lines={lastMonthIncomeLines}
@@ -552,8 +585,7 @@ export default function Financials() {
               )}
 
               {/* Software subscriptions */}
-              {subscriptions.loading && <Spinner label="Loading software subscriptions..." />}
-              {!subscriptions.loading && sortedSubs.length > 0 && (
+              {(subscriptions.loading || sortedSubs.length > 0) && (
                 <Card>
                   <div className="flex items-center justify-between mb-5">
                     <div>
@@ -562,88 +594,96 @@ export default function Financials() {
                         Detected from QuickBooks -- billing frequency estimated from transaction history
                       </p>
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-                      <p className="text-xs text-muted">
-                        {sortedSubs.filter(v => v.active).length} active / {sortedSubs.length} total
-                      </p>
-                      <div className="flex items-center gap-1 bg-bg rounded-lg p-1 border border-border">
-                        {[['30d', 'Last 30 Days'], ['12m', 'Last 12 Months']].map(([val, label]) => (
-                          <button
-                            key={val}
-                            onClick={() => setSubPeriod(val)}
-                            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                              subPeriod === val ? 'bg-purple text-white' : 'text-muted hover:text-white'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
+                    {!subscriptions.loading && (
+                      <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                        <p className="text-xs text-muted">
+                          {sortedSubs.filter(v => v.active).length} active / {sortedSubs.length} total
+                        </p>
+                        <div className="flex items-center gap-1 bg-bg rounded-lg p-1 border border-border">
+                          {[['30d', 'Last 30 Days'], ['12m', 'Last 12 Months']].map(([val, label]) => (
+                            <button
+                              key={val}
+                              onClick={() => setSubPeriod(val)}
+                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                                subPeriod === val ? 'bg-purple text-white' : 'text-muted hover:text-white'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left border-b border-border">
-                        {[
-                          { key: 'name', label: 'Vendor', cls: 'pr-4' },
-                          { key: 'monthlyAvg', label: subPeriod === '30d' ? 'Last 30d' : 'Avg / mo', cls: 'pr-4 text-right' },
-                          { key: 'freq', label: 'Billing', cls: 'pr-4 text-center' },
-                          { key: 'status', label: 'Status', cls: 'pr-4 text-center' },
-                          { key: 'annualEst', label: 'Annual Est.', cls: 'text-right' },
-                        ].map(col => (
-                          <th
-                            key={col.key}
-                            onClick={() => cycleSortKey(col.key)}
-                            className={`text-xs text-muted font-medium pb-3 cursor-pointer select-none hover:text-white transition-colors ${col.cls}`}
-                          >
-                            {col.label}
-                            {sortKey === col.key && (
-                              <span className="ml-1 opacity-70">{sortDir === 'desc' ? '▾' : '▴'}</span>
-                            )}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {sortedSubs.map((sub, i) => (
-                        <tr key={i}>
-                          <td className="py-2.5 pr-4 text-white">{sub.name}</td>
-                          <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(sub.monthlyAvg)}</td>
-                          <td className="py-2.5 pr-4 text-center">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              sub.freq === 'Monthly' ? 'bg-purple/20 text-purple' :
-                              sub.freq === 'Annual' ? 'bg-green/20 text-green' :
-                              'bg-border text-muted'
-                            }`}>
-                              {sub.freq}
-                            </span>
-                          </td>
-                          <td className="py-2.5 pr-4 text-center">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              sub.active ? 'bg-green/20 text-green' : 'bg-border text-muted'
-                            }`}>
-                              {sub.active ? 'Active' : 'Canceled'}
-                            </span>
-                          </td>
-                          <td className="py-2.5 text-right text-white font-medium">{fmtDollars(sub.annualEst)}</td>
+                  {subscriptions.loading ? (
+                    <div className="flex justify-center py-8">
+                      <span className="w-5 h-5 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left border-b border-border">
+                          {[
+                            { key: 'name', label: 'Vendor', cls: 'pr-4' },
+                            { key: 'monthlyAvg', label: subPeriod === '30d' ? 'Last 30d' : 'Avg / mo', cls: 'pr-4 text-right' },
+                            { key: 'freq', label: 'Billing', cls: 'pr-4 text-center' },
+                            { key: 'status', label: 'Status', cls: 'pr-4 text-center' },
+                            { key: 'annualEst', label: 'Annual Est.', cls: 'text-right' },
+                          ].map(col => (
+                            <th
+                              key={col.key}
+                              onClick={() => cycleSortKey(col.key)}
+                              className={`text-xs text-muted font-medium pb-3 cursor-pointer select-none hover:text-white transition-colors ${col.cls}`}
+                            >
+                              {col.label}
+                              {sortKey === col.key && (
+                                <span className="ml-1 opacity-70">{sortDir === 'desc' ? '▾' : '▴'}</span>
+                              )}
+                            </th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t border-border">
-                        <td className="pt-3 text-xs text-muted">
-                          Total ({softwareSubs.filter(v => v.active).length} active)
-                        </td>
-                        <td className="pt-3 text-right text-sm text-yellow font-semibold">
-                          {fmtDollars(softwareSubs.filter(v => v.active).reduce((s, v) => s + v.monthlyAvg, 0))}
-                        </td>
-                        <td className="pt-3" colSpan={2} />
-                        <td className="pt-3 text-right text-sm text-yellow font-semibold">
-                          {fmtDollars(softwareSubs.filter(v => v.active).reduce((s, v) => s + v.annualEst, 0))}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {sortedSubs.map((sub, i) => (
+                          <tr key={i}>
+                            <td className="py-2.5 pr-4 text-white">{sub.name}</td>
+                            <td className="py-2.5 pr-4 text-right text-dim">{fmtDollars(sub.monthlyAvg)}</td>
+                            <td className="py-2.5 pr-4 text-center">
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                sub.freq === 'Monthly' ? 'bg-purple/20 text-purple' :
+                                sub.freq === 'Annual' ? 'bg-green/20 text-green' :
+                                'bg-border text-muted'
+                              }`}>
+                                {sub.freq}
+                              </span>
+                            </td>
+                            <td className="py-2.5 pr-4 text-center">
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                sub.active ? 'bg-green/20 text-green' : 'bg-border text-muted'
+                              }`}>
+                                {sub.active ? 'Active' : 'Canceled'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 text-right text-white font-medium">{fmtDollars(sub.annualEst)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t border-border">
+                          <td className="pt-3 text-xs text-muted">
+                            Total ({softwareSubs.filter(v => v.active).length} active)
+                          </td>
+                          <td className="pt-3 text-right text-sm text-yellow font-semibold">
+                            {fmtDollars(softwareSubs.filter(v => v.active).reduce((s, v) => s + v.monthlyAvg, 0))}
+                          </td>
+                          <td className="pt-3" colSpan={2} />
+                          <td className="pt-3 text-right text-sm text-yellow font-semibold">
+                            {fmtDollars(softwareSubs.filter(v => v.active).reduce((s, v) => s + v.annualEst, 0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  )}
                 </Card>
               )}
             </>

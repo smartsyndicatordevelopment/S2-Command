@@ -1,7 +1,6 @@
 import { useApi } from '../hooks/useApi';
 import StatCard from '../components/ui/StatCard';
 import Card from '../components/ui/Card';
-import Spinner from '../components/ui/Spinner';
 import ErrorState from '../components/ui/ErrorState';
 import BusinessChat from '../components/BusinessChat';
 
@@ -22,8 +21,7 @@ export default function Overview() {
   const rev  = useApi('/api/revenue');
   const pnl  = useApi('/api/pnl');
 
-  const loading = subs.loading || rev.loading || pnl.loading;
-  const error   = subs.error || rev.error;
+  const error = subs.error || rev.error;
 
   // Derived values -- computed unconditionally so chat context is always populated
   const allSubs        = subs.data?.subscriptions || [];
@@ -57,84 +55,86 @@ export default function Overview() {
         <p className="text-xs text-muted mt-0.5">Live data -- Stripe + QuickBooks</p>
       </div>
 
-      {loading && <Spinner label="Loading live data..." />}
-      {!loading && error && (
+      {error && (
         <ErrorState message={error} onRetry={() => { subs.refetch(); rev.refetch(); pnl.refetch(); }} />
       )}
 
-      {!loading && !error && (
-        <>
-          {/* KPI grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="MRR" value={fmtDollars(mrr)} sub={`${Math.round(mrrProgress)}% of $20K target`} accent="purple" />
-            <StatCard label="ARR" value={fmtDollars(arr)} sub="Annualized" accent="purple" />
-            <StatCard label={`${ytdYear} YTD Revenue`} value={fmt(ytdRevenue)} sub={`${rev.data?.invoiceCount || 0} invoices paid`} accent="green" />
-            <StatCard label="Active Clients" value={uniqueClients} sub={`${allSubs.length} subscriptions`} accent="white" />
-          </div>
+      {/* KPI grid -- always rendered; each card spins independently */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="MRR" value={fmtDollars(mrr)} sub={`${Math.round(mrrProgress)}% of $20K target`} accent="purple" loading={subs.loading} />
+        <StatCard label="ARR" value={fmtDollars(arr)} sub="Annualized" accent="purple" loading={subs.loading} />
+        <StatCard label={`${ytdYear} YTD Revenue`} value={fmt(ytdRevenue)} sub={`${rev.data?.invoiceCount || 0} invoices paid`} accent="green" loading={rev.loading} />
+        <StatCard label="Active Clients" value={uniqueClients} sub={`${allSubs.length} subscriptions`} accent="white" loading={subs.loading} />
+      </div>
 
-          {/* Second row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="YTD Net Income" value={fmtDollars(netIncome)} sub="QuickBooks (Cash)" accent={netIncome >= 0 ? 'green' : 'red'} />
-            <StatCard label="YTD Expenses" value={fmtDollars(totalExpenses)} sub="QuickBooks (Cash)" accent="yellow" />
-            <StatCard
-              label="MRR to Target Gap"
-              value={fmtDollars(Math.max(0, targetMRR - mrr))}
-              sub="Needed to hit $20K/mo"
-              accent={mrr >= targetMRR ? 'green' : 'red'}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="YTD Net Income" value={fmtDollars(netIncome)} sub="QuickBooks (Cash)" accent={netIncome >= 0 ? 'green' : 'red'} loading={pnl.loading} />
+        <StatCard label="YTD Expenses" value={fmtDollars(totalExpenses)} sub="QuickBooks (Cash)" accent="yellow" loading={pnl.loading} />
+        <StatCard
+          label="MRR to Target Gap"
+          value={fmtDollars(Math.max(0, targetMRR - mrr))}
+          sub="Needed to hit $20K/mo"
+          accent={mrr >= targetMRR ? 'green' : 'red'}
+          loading={subs.loading}
+        />
+        <StatCard
+          label="Avg Revenue / Client"
+          value={uniqueClients > 0 ? fmtDollars(mrr / uniqueClients) : '$0'}
+          sub="Monthly"
+          accent="white"
+          loading={subs.loading}
+        />
+      </div>
+
+      {/* MRR progress bar */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-medium uppercase tracking-widest text-muted">MRR vs $20K Target</p>
+          <p className="text-xs text-dim">{subs.loading ? ' ' : `${fmtDollars(mrr)} / $20,000`}</p>
+        </div>
+        <div className="h-2 bg-border rounded-full overflow-hidden">
+          {!subs.loading && (
+            <div
+              className="h-full rounded-full transition-all"
+              style={{ width: `${mrrProgress}%`, backgroundColor: mrrProgress >= 100 ? '#22c55e' : '#5c3ff4' }}
             />
-            <StatCard
-              label="Avg Revenue / Client"
-              value={uniqueClients > 0 ? fmtDollars(mrr / uniqueClients) : '$0'}
-              sub="Monthly"
-              accent="white"
-            />
+          )}
+        </div>
+        <p className="text-xs text-muted mt-2">{subs.loading ? ' ' : `${Math.round(mrrProgress)}% of monthly revenue target`}</p>
+      </Card>
+
+      {/* Recent signups */}
+      <Card>
+        <p className="text-xs font-medium uppercase tracking-widest text-muted mb-4">Recent Signups</p>
+        {subs.loading ? (
+          <div className="flex justify-center py-8">
+            <span className="w-5 h-5 border-2 border-purple border-t-transparent rounded-full animate-spin" />
           </div>
-
-          {/* MRR progress bar */}
-          <Card>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-medium uppercase tracking-widest text-muted">MRR vs $20K Target</p>
-              <p className="text-xs text-dim">{fmtDollars(mrr)} / $20,000</p>
-            </div>
-            <div className="h-2 bg-border rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{ width: `${mrrProgress}%`, backgroundColor: mrrProgress >= 100 ? '#22c55e' : '#5c3ff4' }}
-              />
-            </div>
-            <p className="text-xs text-muted mt-2">{Math.round(mrrProgress)}% of monthly revenue target</p>
-          </Card>
-
-          {/* Recent signups */}
-          <Card>
-            <p className="text-xs font-medium uppercase tracking-widest text-muted mb-4">Recent Signups</p>
-            {recentSubs.length === 0 ? (
-              <p className="text-sm text-muted">No active subscriptions</p>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left">
-                    <th className="text-xs text-muted font-medium pb-3 pr-4">Customer</th>
-                    <th className="text-xs text-muted font-medium pb-3 pr-4">Plan</th>
-                    <th className="text-xs text-muted font-medium pb-3 pr-4">Amount</th>
-                    <th className="text-xs text-muted font-medium pb-3">Joined</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {recentSubs.map(sub => (
-                    <tr key={sub.id}>
-                      <td className="py-2.5 pr-4 text-white">{sub.customerName}</td>
-                      <td className="py-2.5 pr-4 text-dim">{sub.planName}</td>
-                      <td className="py-2.5 pr-4 font-mono text-green">{fmt(sub.actualAmount)}</td>
-                      <td className="py-2.5 text-muted">{fmtDate(sub.created)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Card>
-        </>
-      )}
+        ) : recentSubs.length === 0 ? (
+          <p className="text-sm text-muted">No active subscriptions</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left">
+                <th className="text-xs text-muted font-medium pb-3 pr-4">Customer</th>
+                <th className="text-xs text-muted font-medium pb-3 pr-4">Plan</th>
+                <th className="text-xs text-muted font-medium pb-3 pr-4">Amount</th>
+                <th className="text-xs text-muted font-medium pb-3">Joined</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {recentSubs.map(sub => (
+                <tr key={sub.id}>
+                  <td className="py-2.5 pr-4 text-white">{sub.customerName}</td>
+                  <td className="py-2.5 pr-4 text-dim">{sub.planName}</td>
+                  <td className="py-2.5 pr-4 font-mono text-green">{fmt(sub.actualAmount)}</td>
+                  <td className="py-2.5 text-muted">{fmtDate(sub.created)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
 
       {/* Business chat -- always rendered so history persists across loads */}
       <div>

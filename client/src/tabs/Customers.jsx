@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown, ChevronRight, Bell } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import StatCard from '../components/ui/StatCard';
-import Spinner from '../components/ui/Spinner';
 import ErrorState from '../components/ui/ErrorState';
 
 function fmt(cents) {
@@ -141,8 +140,7 @@ export default function Customers() {
   // MRR from active only -- paused excluded per user requirement
   const totalMrr = useMemo(() => active.reduce((sum, s) => sum + mrrOf(s), 0), [active]);
 
-  if (subs.loading) return <Spinner label="Loading subscriptions..." />;
-  if (subs.error)   return <ErrorState message={subs.error} onRetry={subs.refetch} />;
+  if (subs.error) return <ErrorState message={subs.error} onRetry={subs.refetch} />;
 
   // Sorted table data
   const sortedSubs = subsSort.sorted(active, {
@@ -195,7 +193,7 @@ export default function Customers() {
     <div className="space-y-6">
       <div>
         <h1 className="text-lg font-semibold text-white">Customers</h1>
-        <p className="text-xs text-muted mt-0.5">{active.length} active subscriptions -- live from Stripe</p>
+        <p className="text-xs text-muted mt-0.5">{subs.loading ? 'Loading from Stripe...' : `${active.length} active subscriptions -- live from Stripe`}</p>
       </div>
 
       {/* Row 1 -- revenue metrics */}
@@ -206,6 +204,7 @@ export default function Customers() {
           sub={`${active.length} active subscriptions`}
           accent="purple"
           tooltip={`${active.length} active subs\nMonthly rates summed; annual plans ÷ 12`}
+          loading={subs.loading}
         />
         <StatCard
           label="ARR"
@@ -213,6 +212,7 @@ export default function Customers() {
           sub="Annualized"
           accent="purple"
           tooltip={`MRR (${fmtMrr(totalMrr)}) × 12`}
+          loading={subs.loading}
         />
         <StatCard
           label="Avg Lifetime Value"
@@ -220,6 +220,7 @@ export default function Customers() {
           sub="Per unique customer, all-time"
           accent="white"
           tooltip={`All-time paid invoices ÷ ${totalEverCount} unique customers`}
+          loading={subs.loading}
         />
         <StatCard
           label="Avg Subscription Length"
@@ -229,6 +230,7 @@ export default function Customers() {
           sub="Active + canceled, all plans"
           accent="white"
           tooltip={`Sum of all sub lifespans ÷ ${totalEverCount} subscriptions\nActive = time so far; canceled = full lifespan`}
+          loading={subs.loading}
         />
       </div>
 
@@ -240,6 +242,7 @@ export default function Customers() {
           sub={`${totalCanceledAllTime.toLocaleString()} canceled all-time`}
           accent="white"
           tooltip={`${active.length} active + ${paused.length} paused + ${totalCanceledAllTime} canceled`}
+          loading={subs.loading}
         />
         <StatCard
           label="Active Subscribers"
@@ -247,6 +250,7 @@ export default function Customers() {
           sub={paused.length > 0 ? `+ ${paused.length} paused` : 'currently subscribed'}
           accent="green"
           tooltip={`${active.length} currently paying${paused.length > 0 ? `\n${paused.length} paused excluded` : ''}`}
+          loading={subs.loading}
         />
         <StatCard
           label="Global Churn Rate"
@@ -254,6 +258,7 @@ export default function Customers() {
           sub={`${totalCanceledAllTime} canceled of ${totalEverCount} total`}
           accent={churnAccent}
           tooltip={`${totalCanceledAllTime} canceled ÷ ${totalEverCount} total subscribers`}
+          loading={subs.loading}
         />
         <StatCard
           label="Customer Acquisition Cost"
@@ -265,6 +270,7 @@ export default function Customers() {
               ? `${fmtMrr(spend3m)} mktg spend (90 days) ÷ ${newCustomersLast3m} new customers\nAccounts: ${marketingAccounts.join(', ')}`
               : `No marketing/advertising QB accounts found in trailing 3 months\nSearching for: advertising, marketing, promo, social media`
             : 'Connect QuickBooks to calculate CAC'}
+          loading={subs.loading || mktg.loading}
         />
       </div>
 
@@ -317,7 +323,11 @@ export default function Customers() {
 
         {/* Active subscriptions table */}
         <div className="overflow-x-auto">
-          {active.length === 0 ? (
+          {subs.loading ? (
+            <div className="flex justify-center py-8">
+              <span className="w-5 h-5 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : active.length === 0 ? (
             <p className="text-sm text-muted">No active subscriptions</p>
           ) : (
             <table className="w-full text-sm">
