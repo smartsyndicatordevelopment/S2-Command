@@ -179,6 +179,11 @@ router.get('/subscriptions', async (req, res) => {
     const newCustomersThisYear = [...trueActive, ...allPaused, ...allCanceled]
       .filter(s => s.created >= thisYearStart).length;
 
+    // New customers in trailing 3 months (matching CAC calculation window)
+    const threeMonthsAgo = now - 90 * 24 * 60 * 60;
+    const newCustomersLast3Months = [...trueActive, ...allPaused, ...allCanceled]
+      .filter(s => s.created >= threeMonthsAgo).length;
+
     // Resolve invoice amounts for each group in parallel (N concurrent lookups per group)
     const resolveGroup = (subs) =>
       Promise.all(
@@ -228,6 +233,7 @@ router.get('/subscriptions', async (req, res) => {
       avgLtv,
       avgSubLengthMonths,
       newCustomersThisYear,
+      newCustomersLast3Months,
     });
   } catch (err) {
     console.error('Stripe /subscriptions error:', err.message);

@@ -323,6 +323,30 @@ router.get('/software-subscriptions', async (req, res) => {
   }
 });
 
+const MARKETING_RE = /advertising|marketing|promo|social media|ad spend|ads\b/i;
+
+router.get('/marketing-spend', async (req, res) => {
+  if (!qbConfigured()) return res.json({ spend3m: 0, marketingAccounts: [], notConfigured: true });
+
+  const now = new Date();
+  // Trailing 3 months: first day of the month 2 months back through today
+  const start = new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().split('T')[0];
+  const end = now.toISOString().split('T')[0];
+
+  try {
+    const data = await withRetry(() =>
+      qbGet(`/reports/ProfitAndLoss?start_date=${start}&end_date=${end}&accounting_method=Cash`)
+    );
+    const { expenseLines } = parsePnL(data);
+    const marketingLines = expenseLines.filter(l => MARKETING_RE.test(l.name));
+    const spend3m = marketingLines.reduce((s, l) => s + l.amount, 0);
+    res.json({ spend3m, marketingAccounts: marketingLines.map(l => l.name), startDate: start, endDate: end });
+  } catch (err) {
+    console.error('QB /marketing-spend error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/qb/status', (req, res) => {
   const cache = getTokenCache();
   res.json({

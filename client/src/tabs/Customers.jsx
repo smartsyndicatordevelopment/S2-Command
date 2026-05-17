@@ -105,7 +105,7 @@ function Section({ title, count, defaultOpen = false, children }) {
 
 export default function Customers() {
   const subs = useApi('/api/subscriptions');
-  const pnl  = useApi('/api/pnl');
+  const mktg = useApi('/api/marketing-spend');
 
   const renewalSort  = useSortable('days', 'asc');
   const subsSort     = useSortable('created', 'desc');
@@ -122,12 +122,13 @@ export default function Customers() {
   const totalCanceledAllTime  = subs.data?.totalCanceledAllTime || 0;
   const avgLtv                = subs.data?.avgLtv || 0;
   const avgSubLengthMonths    = subs.data?.avgSubLengthMonths || 0;
-  const newCustomersThisYear  = subs.data?.newCustomersThisYear || 0;
+  const newCustomersLast3m   = subs.data?.newCustomersLast3Months || 0;
 
-  const thisYear = new Date().getFullYear();
-  const currentYearExpenses = pnl.data?.years?.find(y => y.year === thisYear)?.totalExpenses || 0;
-  const cac = newCustomersThisYear > 0 ? currentYearExpenses / newCustomersThisYear : 0;
-  const qbConfigured = !pnl.data?.notConfigured;
+  // CAC: trailing 3-month marketing/advertising spend (QB) ÷ new customers in same window
+  const spend3m            = mktg.data?.spend3m || 0;
+  const marketingAccounts  = mktg.data?.marketingAccounts || [];
+  const qbConfigured       = !mktg.data?.notConfigured && mktg.data !== null;
+  const cac                = newCustomersLast3m > 0 ? spend3m / newCustomersLast3m : 0;
 
   const upcomingRenewals = useMemo(() => {
     const now    = Math.floor(Date.now() / 1000);
@@ -257,10 +258,12 @@ export default function Customers() {
         <StatCard
           label="Customer Acquisition Cost"
           value={qbConfigured && cac > 0 ? fmtMrr(cac) : '--'}
-          sub={`${newCustomersThisYear} new customers ${thisYear}`}
+          sub={`${newCustomersLast3m} new customers (last 90 days)`}
           accent="white"
           tooltip={qbConfigured
-            ? `QB expenses ${thisYear} (${fmtMrr(currentYearExpenses)}) ÷ ${newCustomersThisYear} new customers`
+            ? marketingAccounts.length > 0
+              ? `${fmtMrr(spend3m)} mktg spend (90 days) ÷ ${newCustomersLast3m} new customers\nAccounts: ${marketingAccounts.join(', ')}`
+              : `No marketing/advertising QB accounts found in trailing 3 months\nSearching for: advertising, marketing, promo, social media`
             : 'Connect QuickBooks to calculate CAC'}
         />
       </div>

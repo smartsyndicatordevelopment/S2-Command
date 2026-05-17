@@ -17,15 +17,20 @@ function fmtDollars(val) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 }
 
-function stripAccountNumber(name) {
-  return name.replace(/^\d[\d.]*\s+/, '');
+function cleanName(name) {
+  const stripped = name.replace(/^\d[\d.]*\s+/, '');
+  // Convert fully all-caps names to title case; leave mixed-case unchanged
+  if (/^[^a-z]+$/.test(stripped) && /[A-Z]/.test(stripped)) {
+    return stripped.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return stripped;
 }
 
 // -- Module-level tree helpers --
 
 function mergeIntoTree(treeMap, items) {
   (items || []).forEach(item => {
-    const name = stripAccountNumber(item.name);
+    const name = cleanName(item.name);
     if (!treeMap[name]) treeMap[name] = { name, amount: 0, children: {} };
     treeMap[name].amount += item.amount;
     mergeIntoTree(treeMap[name].children, item.children);
@@ -44,7 +49,7 @@ function processGroupedLines(items) {
     .filter(e => e.amount > 0)
     .sort((a, b) => b.amount - a.amount)
     .map(e => ({
-      name: stripAccountNumber(e.name),
+      name: cleanName(e.name),
       amount: e.amount,
       children: processGroupedLines(e.children),
     }));
@@ -626,9 +631,13 @@ export default function Financials() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-border">
-                        <td className="pt-3 text-xs text-muted" colSpan={4}>
-                          {subPeriod === '30d' ? 'Last 30 days annualized (active vendors)' : 'Active annual software spend (estimated)'}
+                        <td className="pt-3 text-xs text-muted">
+                          Total ({softwareSubs.filter(v => v.active).length} active)
                         </td>
+                        <td className="pt-3 text-right text-sm text-yellow font-semibold">
+                          {fmtDollars(softwareSubs.filter(v => v.active).reduce((s, v) => s + v.monthlyAvg, 0))}
+                        </td>
+                        <td className="pt-3" colSpan={2} />
                         <td className="pt-3 text-right text-sm text-yellow font-semibold">
                           {fmtDollars(softwareSubs.filter(v => v.active).reduce((s, v) => s + v.annualEst, 0))}
                         </td>
