@@ -179,34 +179,46 @@ router.get('/subscriptions', async (req, res) => {
     const newCustomersThisYear = [...trueActive, ...allPaused, ...allCanceled]
       .filter(s => s.created >= thisYearStart).length;
 
-    // New customers in trailing 3 months (matching CAC calculation window)
+    // New subscription-product customers in trailing 3 months (matching CAC calculation window)
+    // isSubProduct defined below; computed after subProductsEver is available -- placeholder replaced inline
     const threeMonthsAgo = now - 90 * 24 * 60 * 60;
     const newCustomersLast3Months = [...trueActive, ...allPaused, ...allCanceled]
-      .filter(s => s.created >= threeMonthsAgo).length;
+      .filter(s => {
+        const price = s.items?.data?.[0]?.price;
+        const key = `${price?.unit_amount}|${price?.recurring?.interval}`;
+        return (key in PLAN_NAME_MAP) && s.created >= threeMonthsAgo;
+      }).length;
 
     // Windowed stats for dynamic LTV / CAC window selector on the Customers page
+    // Only subscription products (price keys in PLAN_NAME_MAP) count for CAC and signup chart.
     const allSubsEver = [...trueActive, ...allPaused, ...allCanceled];
+    const isSubProduct = (sub) => {
+      const price = sub.items?.data?.[0]?.price;
+      const key = `${price?.unit_amount}|${price?.recurring?.interval}`;
+      return key in PLAN_NAME_MAP;
+    };
+    const subProductsEver = allSubsEver.filter(isSubProduct);
     const subCustId = s => (typeof s.customer === 'string' ? s.customer : s.customer?.id);
     const windowedStats = {};
     for (const days of [30, 90, 180, 365]) {
       const cutoff = now - days * 24 * 3600;
-      const ids = new Set(allSubsEver.filter(s => s.created >= cutoff).map(subCustId).filter(Boolean));
+      const ids = new Set(subProductsEver.filter(s => s.created >= cutoff).map(subCustId).filter(Boolean));
       const spends = [...ids].map(id => customerSpend[id] || 0);
       windowedStats[days] = {
         newCustomers: ids.size,
         avgLtv: ids.size > 0 ? spends.reduce((a, b) => a + b, 0) / ids.size : 0,
       };
     }
-    const allIds = new Set(allSubsEver.map(subCustId).filter(Boolean));
-    const allSpends = [...allIds].map(id => customerSpend[id] || 0);
+    const allSubIds = new Set(subProductsEver.map(subCustId).filter(Boolean));
+    const allSubSpends = [...allSubIds].map(id => customerSpend[id] || 0);
     windowedStats.all = {
-      newCustomers: totalEverCount,
-      avgLtv: allIds.size > 0 ? allSpends.reduce((a, b) => a + b, 0) / allIds.size : 0,
+      newCustomers: allSubIds.size,
+      avgLtv: allSubIds.size > 0 ? allSubSpends.reduce((a, b) => a + b, 0) / allSubIds.size : 0,
     };
 
-    // Monthly signup counts keyed "YYYY-MM" -- used for the signups bar chart
+    // Monthly signup counts keyed "YYYY-MM" -- subscription products only
     const monthlySignups = {};
-    allSubsEver.forEach(sub => {
+    subProductsEver.forEach(sub => {
       const d = new Date(sub.created * 1000);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       monthlySignups[key] = (monthlySignups[key] || 0) + 1;
