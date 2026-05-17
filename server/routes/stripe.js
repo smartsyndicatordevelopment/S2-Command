@@ -204,6 +204,14 @@ router.get('/subscriptions', async (req, res) => {
       avgLtv: allIds.size > 0 ? allSpends.reduce((a, b) => a + b, 0) / allIds.size : 0,
     };
 
+    // Monthly signup counts keyed "YYYY-MM" -- used for the signups bar chart
+    const monthlySignups = {};
+    allSubsEver.forEach(sub => {
+      const d = new Date(sub.created * 1000);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthlySignups[key] = (monthlySignups[key] || 0) + 1;
+    });
+
     // Resolve invoice amounts for each group in parallel (N concurrent lookups per group)
     const resolveGroup = (subs) =>
       Promise.all(
@@ -255,6 +263,7 @@ router.get('/subscriptions', async (req, res) => {
       newCustomersThisYear,
       newCustomersLast3Months,
       windowedStats,
+      monthlySignups,
     });
   } catch (err) {
     console.error('Stripe /subscriptions error:', err.message);

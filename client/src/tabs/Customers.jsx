@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown, ChevronRight, Bell } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { useApi } from '../hooks/useApi';
 import StatCard from '../components/ui/StatCard';
+import Card from '../components/ui/Card';
 import ErrorState from '../components/ui/ErrorState';
 
 function fmt(cents) {
@@ -113,10 +115,11 @@ const WINDOW_OPTIONS = [
 const WINDOW_LABELS = { '30': '30 days', '90': '90 days', '180': '6 months', '365': '12 months', 'all': 'all time' };
 
 export default function Customers() {
-  const [ltvWindow, setLtvWindow] = useState('all');
-  const [cacWindow, setCacWindow] = useState('90');
-  const [ltvHover, setLtvHover]   = useState(false);
-  const [cacHover, setCacHover]   = useState(false);
+  const [ltvWindow, setLtvWindow]       = useState('all');
+  const [cacWindow, setCacWindow]       = useState('90');
+  const [ltvHover, setLtvHover]         = useState(false);
+  const [cacHover, setCacHover]         = useState(false);
+  const [signupWindow, setSignupWindow] = useState('12');
 
   const subs = useApi('/api/subscriptions');
   const mktg = useApi(`/api/marketing-spend?days=${cacWindow}`);
@@ -162,6 +165,34 @@ export default function Customers() {
 
   // MRR from active only -- paused excluded per user requirement
   const totalMrr = useMemo(() => active.reduce((sum, s) => sum + mrrOf(s), 0), [active]);
+
+  // Signup bar chart data
+  const signupChartData = useMemo(() => {
+    const raw = subs.data?.monthlySignups || {};
+    const allKeys = Object.keys(raw).sort();
+    if (allKeys.length === 0) return [];
+
+    let keys;
+    if (signupWindow === 'all') {
+      keys = allKeys;
+    } else {
+      const months = parseInt(signupWindow, 10);
+      const now = new Date();
+      const cutoffKeys = [];
+      for (let i = months - 1; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        cutoffKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+      }
+      keys = cutoffKeys;
+    }
+
+    const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return keys.map(key => {
+      const [year, month] = key.split('-').map(Number);
+      const label = `${MONTH_NAMES[month - 1]} '${String(year).slice(2)}`;
+      return { key, label, signups: raw[key] || 0 };
+    });
+  }, [subs.data, signupWindow]);
 
   if (subs.error) return <ErrorState message={subs.error} onRetry={subs.refetch} />;
 
@@ -597,6 +628,74 @@ export default function Customers() {
           loading={subs.loading}
         />
       </div>
+
+      {/* Subscription signups bar chart */}
+      <Card>
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-widest text-muted">Subscription Signups</p>
+            <p className="text-xs text-muted mt-0.5">New subscriptions per month -- active, paused, and canceled</p>
+          </div>
+          <div className="flex items-center gap-1 bg-bg rounded-lg p-1 border border-border">
+            {[['6', '6mo'], ['12', '12mo'], ['24', '24mo'], ['all', 'All Time']].map(([val, label]) => (
+              <button
+                key={val}
+                onClick={() => setSignupWindow(val)}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  signupWindow === val ? 'bg-purple text-white' : 'text-muted hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {subs.loading ? (
+          <div className="h-48 flex items-center justify-center">
+            <span className="w-6 h-6 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : signupChartData.length === 0 ? (
+          <p className="text-sm text-muted py-8 text-center">No signup data available</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={signupChartData} barCategoryGap="30%">
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3a" vertical={false} />
+              <XAxis
+                dataKey="label"
+                tick={{ fill: '#6b7280', fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+                interval={signupWindow === 'all' ? 'preserveStartEnd' : 0}
+              />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fill: '#6b7280', fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={28}
+              />
+              <Tooltip
+                cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  return (
+                    <div className="bg-card border border-border rounded-lg px-3 py-2 text-xs">
+                      <p className="text-muted mb-1">{label}</p>
+                      <p className="text-purple font-mono">{payload[0].value} signup{payload[0].value !== 1 ? 's' : ''}</p>
+                    </div>
+                  );
+                }}
+              />
+              <Bar dataKey="signups" radius={[3, 3, 0, 0]}>
+                {signupChartData.map((entry) => (
+                  <Cell key={entry.key} fill="#5c3ff4" />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </Card>
     </div>
   );
 }
