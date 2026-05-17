@@ -128,6 +128,8 @@ export default function Customers() {
   const marketingAccounts  = mktg.data?.marketingAccounts || [];
   const qbConfigured       = !mktg.data?.notConfigured && mktg.data !== null;
   const cac                = newCustomersLast3m > 0 ? spend3m / newCustomersLast3m : 0;
+  const ltvDollars         = avgLtv / 100;
+  const ltvCacRatio        = qbConfigured && cac > 0 && ltvDollars > 0 ? ltvDollars / cac : 0;
 
   const upcomingRenewals = useMemo(() => {
     const now    = Math.floor(Date.now() / 1000);
@@ -197,7 +199,7 @@ export default function Customers() {
       </div>
 
       {/* Row 1 -- revenue metrics */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <StatCard
           label="MRR"
           value={fmtMrr(totalMrr)}
@@ -232,6 +234,16 @@ export default function Customers() {
               ? `${fmtMrr(spend3m)} mktg spend (90 days) ÷ ${newCustomersLast3m} new customers\nAccounts: ${marketingAccounts.join(', ')}`
               : `No marketing/advertising QB accounts found in trailing 3 months\nSearching for: advertising, marketing, promo, social media`
             : 'Connect QuickBooks to calculate CAC'}
+          loading={subs.loading || mktg.loading}
+        />
+        <StatCard
+          label="LTV : CAC"
+          value={ltvCacRatio > 0 ? `${ltvCacRatio.toFixed(1)}:1` : '--'}
+          sub="Target: 16:1 minimum"
+          accent={ltvCacRatio >= 16 ? 'green' : ltvCacRatio >= 8 ? 'yellow' : ltvCacRatio > 0 ? 'red' : 'white'}
+          tooltip={ltvCacRatio > 0
+            ? `LTV (${fmtMrr(ltvDollars)}) ÷ CAC (${fmtMrr(cac)})`
+            : qbConfigured ? 'Requires CAC data from QuickBooks' : 'Connect QuickBooks to calculate'}
           loading={subs.loading || mktg.loading}
         />
       </div>
