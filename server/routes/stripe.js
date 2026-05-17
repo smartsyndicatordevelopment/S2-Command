@@ -184,6 +184,26 @@ router.get('/subscriptions', async (req, res) => {
     const newCustomersLast3Months = [...trueActive, ...allPaused, ...allCanceled]
       .filter(s => s.created >= threeMonthsAgo).length;
 
+    // Windowed stats for dynamic LTV / CAC window selector on the Customers page
+    const allSubsEver = [...trueActive, ...allPaused, ...allCanceled];
+    const subCustId = s => (typeof s.customer === 'string' ? s.customer : s.customer?.id);
+    const windowedStats = {};
+    for (const days of [30, 90, 180, 365]) {
+      const cutoff = now - days * 24 * 3600;
+      const ids = new Set(allSubsEver.filter(s => s.created >= cutoff).map(subCustId).filter(Boolean));
+      const spends = [...ids].map(id => customerSpend[id] || 0);
+      windowedStats[days] = {
+        newCustomers: ids.size,
+        avgLtv: ids.size > 0 ? spends.reduce((a, b) => a + b, 0) / ids.size : 0,
+      };
+    }
+    const allIds = new Set(allSubsEver.map(subCustId).filter(Boolean));
+    const allSpends = [...allIds].map(id => customerSpend[id] || 0);
+    windowedStats.all = {
+      newCustomers: totalEverCount,
+      avgLtv: allIds.size > 0 ? allSpends.reduce((a, b) => a + b, 0) / allIds.size : 0,
+    };
+
     // Resolve invoice amounts for each group in parallel (N concurrent lookups per group)
     const resolveGroup = (subs) =>
       Promise.all(
@@ -234,6 +254,7 @@ router.get('/subscriptions', async (req, res) => {
       avgSubLengthMonths,
       newCustomersThisYear,
       newCustomersLast3Months,
+      windowedStats,
     });
   } catch (err) {
     console.error('Stripe /subscriptions error:', err.message);

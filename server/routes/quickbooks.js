@@ -326,12 +326,20 @@ router.get('/software-subscriptions', async (req, res) => {
 const MARKETING_RE = /advertising|marketing|promo|social media|ad spend|ads\b/i;
 
 router.get('/marketing-spend', async (req, res) => {
-  if (!qbConfigured()) return res.json({ spend3m: 0, marketingAccounts: [], notConfigured: true });
+  if (!qbConfigured()) return res.json({ spend: 0, spend3m: 0, marketingAccounts: [], notConfigured: true });
 
   const now = new Date();
-  // Trailing 3 months: first day of the month 2 months back through today
-  const start = new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().split('T')[0];
   const end = now.toISOString().split('T')[0];
+  const rawDays = req.query.days;
+  let start;
+  if (!rawDays || rawDays === 'all') {
+    start = '2020-01-01';
+  } else {
+    const days = parseInt(rawDays, 10);
+    const d = new Date(now);
+    d.setDate(d.getDate() - days);
+    start = d.toISOString().split('T')[0];
+  }
 
   try {
     const data = await withRetry(() =>
@@ -339,8 +347,8 @@ router.get('/marketing-spend', async (req, res) => {
     );
     const { expenseLines } = parsePnL(data);
     const marketingLines = expenseLines.filter(l => MARKETING_RE.test(l.name));
-    const spend3m = marketingLines.reduce((s, l) => s + l.amount, 0);
-    res.json({ spend3m, marketingAccounts: marketingLines.map(l => l.name), startDate: start, endDate: end });
+    const spend = marketingLines.reduce((s, l) => s + l.amount, 0);
+    res.json({ spend, spend3m: spend, marketingAccounts: marketingLines.map(l => l.name), startDate: start, endDate: end });
   } catch (err) {
     console.error('QB /marketing-spend error:', err.message);
     res.status(500).json({ error: err.message });
