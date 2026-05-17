@@ -238,8 +238,8 @@ export default function Customers() {
         />
         <StatCard
           label="LTV : CAC"
-          value={ltvCacRatio > 0 ? `${ltvCacRatio.toFixed(1)}:1` : '--'}
-          sub="Target: 16:1 minimum"
+          value={ltvCacRatio > 0 ? `${Math.round(ltvCacRatio)}:1` : '--'}
+          sub="Lifetime value per acquisition dollar"
           accent={ltvCacRatio >= 16 ? 'green' : ltvCacRatio >= 8 ? 'yellow' : ltvCacRatio > 0 ? 'red' : 'white'}
           tooltip={ltvCacRatio > 0
             ? `LTV (${fmtMrr(ltvDollars)}) ÷ CAC (${fmtMrr(cac)})`
