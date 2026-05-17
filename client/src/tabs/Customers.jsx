@@ -223,14 +223,16 @@ export default function Customers() {
           loading={subs.loading}
         />
         <StatCard
-          label="Avg Subscription Length"
-          value={avgSubLengthMonths >= 24
-            ? `${(avgSubLengthMonths / 12).toFixed(1)} yr`
-            : `${avgSubLengthMonths.toFixed(1)} mo`}
-          sub="Active + canceled, all plans"
+          label="Customer Acquisition Cost"
+          value={qbConfigured && cac > 0 ? fmtMrr(cac) : '--'}
+          sub={`${newCustomersLast3m} new customers (last 90 days)`}
           accent="white"
-          tooltip={`Sum of all sub lifespans ÷ ${totalEverCount} subscriptions\nActive = time so far; canceled = full lifespan`}
-          loading={subs.loading}
+          tooltip={qbConfigured
+            ? marketingAccounts.length > 0
+              ? `${fmtMrr(spend3m)} mktg spend (90 days) ÷ ${newCustomersLast3m} new customers\nAccounts: ${marketingAccounts.join(', ')}`
+              : `No marketing/advertising QB accounts found in trailing 3 months\nSearching for: advertising, marketing, promo, social media`
+            : 'Connect QuickBooks to calculate CAC'}
+          loading={subs.loading || mktg.loading}
         />
       </div>
 
@@ -261,16 +263,14 @@ export default function Customers() {
           loading={subs.loading}
         />
         <StatCard
-          label="Customer Acquisition Cost"
-          value={qbConfigured && cac > 0 ? fmtMrr(cac) : '--'}
-          sub={`${newCustomersLast3m} new customers (last 90 days)`}
+          label="Avg Subscription Length"
+          value={avgSubLengthMonths >= 24
+            ? `${(avgSubLengthMonths / 12).toFixed(1)} yr`
+            : `${avgSubLengthMonths.toFixed(1)} mo`}
+          sub="Active + canceled, all plans"
           accent="white"
-          tooltip={qbConfigured
-            ? marketingAccounts.length > 0
-              ? `${fmtMrr(spend3m)} mktg spend (90 days) ÷ ${newCustomersLast3m} new customers\nAccounts: ${marketingAccounts.join(', ')}`
-              : `No marketing/advertising QB accounts found in trailing 3 months\nSearching for: advertising, marketing, promo, social media`
-            : 'Connect QuickBooks to calculate CAC'}
-          loading={subs.loading || mktg.loading}
+          tooltip={`Sum of all sub lifespans ÷ ${totalEverCount} subscriptions\nActive = time so far; canceled = full lifespan`}
+          loading={subs.loading}
         />
       </div>
 
