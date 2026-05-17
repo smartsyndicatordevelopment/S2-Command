@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import Card from '../components/ui/Card';
 import { useApi } from '../hooks/useApi';
 
@@ -104,43 +105,66 @@ export default function BusinessPlan() {
       label: 'ARPU (Monthly)',
       target: '$400-600',
       actual: a(arpu, v => fmtUsd(v)),
+      tooltip: arpu > 0
+        ? `MRR (${fmtUsd(mrr)}) / ${uniqueClients} active clients`
+        : null,
     },
     {
       label: 'LTV (24mo avg)',
       target: '$8K-12K',
       actual: a(avgLtv, v => fmtK(v)),
+      tooltip: avgLtv > 0
+        ? `Total all-time spend / unique paying customers`
+        : null,
     },
     {
       label: 'Target CAC',
       target: 'under $500',
       actual: a(cac, v => fmtUsd(v)),
+      tooltip: cac > 0
+        ? `${fmtUsd(spend3m)} mktg spend (90 days) / ${newLast3m} new customers`
+        : qbReady ? `No QB marketing accounts found` : `Connect QuickBooks to calculate`,
     },
     {
       label: 'LTV : CAC',
       target: '16:1 minimum',
       actual: a(ltvCacRatio, v => `${v.toFixed(1)}:1`),
+      tooltip: ltvCacRatio > 0
+        ? `LTV (${fmtK(avgLtv)}) / CAC (${fmtUsd(cac)})`
+        : null,
     },
     {
       label: 'Gross Margin',
       target: '85%+',
       actual: '--',
+      tooltip: null,
     },
     {
       label: 'Payback Period',
       target: 'under 2 months',
       actual: a(paybackMonths, v => `${v.toFixed(1)} mo`),
+      tooltip: paybackMonths > 0
+        ? `CAC (${fmtUsd(cac)}) / ARPU (${fmtUsd(arpu)})`
+        : null,
     },
     {
       label: 'Annual Churn Target',
       target: 'under 15%',
       actual: totalEver > 0 ? `${churnPct.toFixed(1)}%` : '--',
+      tooltip: totalEver > 0
+        ? `${totalCanceled} canceled / ${totalEver} all-time subscribers`
+        : null,
     },
     {
       label: 'NPS Target',
       target: '50+',
       actual: '--',
+      tooltip: null,
     },
   ];
+
+  const isLoading = subs.loading || mktg.loading;
+  const [hoveredMetric, setHoveredMetric] = useState(null);
 
   return (
     <div className="space-y-6">
@@ -216,11 +240,24 @@ export default function BusinessPlan() {
                   <p className="text-[10px] uppercase tracking-wider text-muted mb-0.5">Target</p>
                   <p className="font-mono text-sm text-white font-semibold">{m.target}</p>
                 </div>
-                <div className="text-right">
+                <div
+                  className="relative text-right"
+                  onMouseEnter={() => m.tooltip && setHoveredMetric(m.label)}
+                  onMouseLeave={() => setHoveredMetric(null)}
+                >
                   <p className="text-[10px] uppercase tracking-wider text-muted mb-0.5">Actual</p>
-                  <p className={`font-mono text-sm font-semibold ${m.actual === '--' ? 'text-muted' : 'text-yellow'}`}>
-                    {m.actual}
-                  </p>
+                  {isLoading ? (
+                    <span className="inline-block w-3 h-3 border border-yellow border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <p className={`font-mono text-sm font-semibold ${m.actual === '--' ? 'text-muted' : 'text-yellow'} ${m.tooltip ? 'cursor-help' : ''}`}>
+                      {m.actual}
+                    </p>
+                  )}
+                  {hoveredMetric === m.label && m.tooltip && (
+                    <div className="absolute bottom-full right-0 mb-2 z-50 max-w-xs bg-card border border-border rounded-lg px-3 py-2 text-xs text-muted shadow-lg whitespace-pre-line pointer-events-none">
+                      {m.tooltip}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
