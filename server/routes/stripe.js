@@ -89,8 +89,8 @@ router.get('/subscriptions', async (req, res) => {
     const now = Math.floor(Date.now() / 1000);
     const twelveMonthsAgo = now - 365 * 24 * 60 * 60;
 
-    // Fetch all subscription statuses and recent paid invoices in parallel
-    const [rawActive, rawPaused, rawCanceled, recentInvoices] = await Promise.all([
+    // Fetch all subscription statuses, recent paid invoices, and all-time invoices in parallel
+    const [rawActive, rawPaused, rawCanceled, recentInvoices, allTimeInvoices] = await Promise.all([
       listAll((cursor) =>
         stripe.subscriptions.list({
           status: 'active',
@@ -125,6 +125,14 @@ router.get('/subscriptions', async (req, res) => {
           ...(cursor && { starting_after: cursor }),
         })
       ),
+      // All-time invoices (no date filter) for total spend per customer
+      listAll((cursor) =>
+        stripe.invoices.list({
+          status: 'paid',
+          limit: 100,
+          ...(cursor && { starting_after: cursor }),
+        })
+      ),
     ]);
 
     // Partition active subs: legacy-paused (pause_collection set) vs truly active
@@ -143,12 +151,44 @@ router.get('/subscriptions', async (req, res) => {
     const totalEverCount = trueActive.length + allPaused.length + allCanceled.length;
     const totalCanceledAllTime = allCanceled.length;
 
+    // Build allowed customer ID set (owner already filtered) for invoice aggregation
+    const allowedCustomerIds = new Set(
+      [...trueActive, ...allPaused, ...allCanceled]
+        .map(s => typeof s.customer === 'string' ? s.customer : s.customer?.id)
+        .filter(Boolean)
+    );
+
+    // Total all-time spend per customer from paid invoices (cents)
+    const customerSpend = {};
+    allTimeInvoices.forEach(inv => {
+      const custId = typeof inv.customer === 'string' ? inv.customer : inv.customer?.id;
+      if (custId && allowedCustomerIds.has(custId) && inv.total > 0) {
+        customerSpend[custId] = (customerSpend[custId] || 0) + inv.total;
+      }
+    });
+
+    // Average LTV across all unique customers who have spend recorded
+    const spendValues = Object.values(customerSpend);
+    const avgLtv = spendValues.length > 0
+      ? spendValues.reduce((s, v) => s + v, 0) / spendValues.length
+      : 0;
+
+    // Average subscription length in months (active: length so far; canceled: full lifespan)
+    const allSubsForLength = [...trueActive, ...allPaused, ...allCanceled];
+    const avgSubLengthMonths = allSubsForLength.length > 0
+      ? allSubsForLength.reduce((s, sub) => {
+          const end = sub.canceled_at || now;
+          return s + (end - sub.created) / (30.44 * 24 * 3600);
+        }, 0) / allSubsForLength.length
+      : 0;
+
     // Resolve invoice amounts for each group in parallel (N concurrent lookups per group)
     const resolveGroup = (subs) =>
       Promise.all(
         subs.map(async (sub) => {
           const actualAmount = await getLastInvoiceAmount(sub.id);
-          return buildSubResult(sub, actualAmount);
+          const custId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
+          return { ...buildSubResult(sub, actualAmount), totalSpend: customerSpend[custId] || 0 };
         })
       );
 
@@ -188,6 +228,8 @@ router.get('/subscriptions', async (req, res) => {
       uniqueClients,
       totalEverCount,
       totalCanceledAllTime,
+      avgLtv,
+      avgSubLengthMonths,
     });
   } catch (err) {
     console.error('Stripe /subscriptions error:', err.message);

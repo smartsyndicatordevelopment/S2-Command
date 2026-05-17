@@ -132,8 +132,10 @@ export default function Customers() {
   const canceled = useMemo(() => subs.data?.canceledSubscriptions || [], [subs.data]);
   const oneOffs  = useMemo(() => subs.data?.oneOffTransactions || [], [subs.data]);
 
-  const totalEverCount       = subs.data?.totalEverCount || 0;
-  const totalCanceledAllTime = subs.data?.totalCanceledAllTime || 0;
+  const totalEverCount        = subs.data?.totalEverCount || 0;
+  const totalCanceledAllTime  = subs.data?.totalCanceledAllTime || 0;
+  const avgLtv                = subs.data?.avgLtv || 0;
+  const avgSubLengthMonths    = subs.data?.avgSubLengthMonths || 0;
 
   const upcomingRenewals = useMemo(() => {
     const now    = Math.floor(Date.now() / 1000);
@@ -172,6 +174,7 @@ export default function Customers() {
     interval:         s => s.interval,
     created:          s => s.created,
     currentPeriodEnd: s => s.currentPeriodEnd,
+    totalSpend:       s => s.totalSpend,
   });
 
   const sortedRenewals = renewalSort.sorted(upcomingRenewals, {
@@ -187,6 +190,7 @@ export default function Customers() {
     actualAmount:     s => s.actualAmount,
     created:          s => s.created,
     currentPeriodEnd: s => s.currentPeriodEnd,
+    totalSpend:       s => s.totalSpend,
   });
 
   const sortedCanceled = canceledSort.sorted(canceled, {
@@ -195,6 +199,7 @@ export default function Customers() {
     actualAmount: s => s.actualAmount,
     canceledAt:   s => s.canceledAt,
     created:      s => s.created,
+    totalSpend:   s => s.totalSpend,
   });
 
   const sortedOneOffs = oneOffSort.sorted(oneOffs, {
@@ -236,10 +241,24 @@ export default function Customers() {
         />
       </div>
 
-      {/* MRR + ARR -- active only, paused excluded */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* MRR + ARR + LTV + avg length -- active only for MRR/ARR */}
+      <div className="grid grid-cols-4 gap-4">
         <StatCard label="MRR" value={fmtMrr(totalMrr)} sub={`${active.length} active subscriptions`} accent="purple" />
         <StatCard label="ARR" value={fmtMrr(totalMrr * 12)} sub="Annualized" accent="purple" />
+        <StatCard
+          label="Avg Lifetime Value"
+          value={fmt(Math.round(avgLtv))}
+          sub="Per unique customer, all-time"
+          accent="white"
+        />
+        <StatCard
+          label="Avg Subscription Length"
+          value={avgSubLengthMonths >= 24
+            ? `${(avgSubLengthMonths / 12).toFixed(1)} yr`
+            : `${avgSubLengthMonths.toFixed(1)} mo`}
+          sub="Active + canceled, all plans"
+          accent="white"
+        />
       </div>
 
       {/* Active Subscriptions section -- starts open */}
@@ -351,6 +370,7 @@ export default function Customers() {
                   <SortTh label="Cycle"        colKey="interval"         {...subsSort} onSort={subsSort.toggle} />
                   <SortTh label="Started"      colKey="created"          {...subsSort} onSort={subsSort.toggle} />
                   <SortTh label="Next Payment" colKey="currentPeriodEnd" {...subsSort} onSort={subsSort.toggle} />
+                  <SortTh label="Total Spend"  colKey="totalSpend"       {...subsSort} onSort={subsSort.toggle} align="right" className="text-right" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -376,7 +396,8 @@ export default function Customers() {
                       </span>
                     </td>
                     <td className="py-2.5 pr-4 text-muted text-xs">{fmtDate(sub.created)}</td>
-                    <td className="py-2.5 text-xs text-muted">{fmtDate(sub.currentPeriodEnd)}</td>
+                    <td className="py-2.5 pr-4 text-xs text-muted">{fmtDate(sub.currentPeriodEnd)}</td>
+                    <td className="py-2.5 font-mono text-right text-dim">{fmt(sub.totalSpend)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -388,7 +409,7 @@ export default function Customers() {
                   <td className="pt-3 font-mono font-semibold text-right" style={{ color: '#5c3ff4' }}>
                     {fmtMrr(totalMrr)}
                   </td>
-                  <td colSpan={3} />
+                  <td colSpan={4} />
                 </tr>
               </tfoot>
             </table>
@@ -411,6 +432,7 @@ export default function Customers() {
                   <SortTh label="Cycle"       colKey="interval"         {...pausedSort} onSort={pausedSort.toggle} />
                   <SortTh label="Started"     colKey="created"          {...pausedSort} onSort={pausedSort.toggle} />
                   <SortTh label="Period End"  colKey="currentPeriodEnd" {...pausedSort} onSort={pausedSort.toggle} />
+                  <SortTh label="Total Spend" colKey="totalSpend"       {...pausedSort} onSort={pausedSort.toggle} align="right" className="text-right" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -430,7 +452,8 @@ export default function Customers() {
                       </span>
                     </td>
                     <td className="py-2.5 pr-4 text-muted text-xs">{fmtDate(sub.created)}</td>
-                    <td className="py-2.5 text-xs text-muted">{fmtDate(sub.currentPeriodEnd)}</td>
+                    <td className="py-2.5 pr-4 text-xs text-muted">{fmtDate(sub.currentPeriodEnd)}</td>
+                    <td className="py-2.5 font-mono text-right text-dim">{fmt(sub.totalSpend)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -453,6 +476,7 @@ export default function Customers() {
                   <SortTh label="Last Billed" colKey="actualAmount" {...canceledSort} onSort={canceledSort.toggle} align="right" className="text-right" />
                   <SortTh label="Canceled"    colKey="canceledAt"   {...canceledSort} onSort={canceledSort.toggle} />
                   <SortTh label="Started"     colKey="created"      {...canceledSort} onSort={canceledSort.toggle} />
+                  <SortTh label="Total Spend" colKey="totalSpend"   {...canceledSort} onSort={canceledSort.toggle} align="right" className="text-right" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -469,7 +493,8 @@ export default function Customers() {
                     <td className="py-2.5 pr-4 text-muted text-xs">
                       {sub.canceledAt ? fmtDate(sub.canceledAt) : '--'}
                     </td>
-                    <td className="py-2.5 text-xs text-muted">{fmtDate(sub.created)}</td>
+                    <td className="py-2.5 pr-4 text-xs text-muted">{fmtDate(sub.created)}</td>
+                    <td className="py-2.5 font-mono text-right text-dim">{fmt(sub.totalSpend)}</td>
                   </tr>
                 ))}
               </tbody>
