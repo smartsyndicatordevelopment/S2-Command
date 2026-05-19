@@ -147,9 +147,9 @@ export default function Customers() {
   // CAC -- driven by cacWindow selector independently
   const cacStats           = subs.data?.windowedStats?.[cacWindow] || {};
   const windowNewCustomers = cacStats.newCustomers || 0;
-  const spend              = mktg.data?.spend || 0;
-  const marketingAccounts  = mktg.data?.marketingAccounts || [];
-  const qbConfigured       = !mktg.data?.notConfigured && mktg.data !== null;
+  const spend              = mktg.loading ? 0 : (mktg.data?.spend || 0);
+  const marketingAccounts  = mktg.loading ? [] : (mktg.data?.marketingAccounts || []);
+  const qbConfigured       = !mktg.loading && !mktg.data?.notConfigured && mktg.data !== null;
   const cac                = windowNewCustomers > 0 ? spend / windowNewCustomers : 0;
 
   // LTV:CAC -- recalculates from each card's independent window
