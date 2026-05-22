@@ -9,6 +9,7 @@ import Avatar from '../tabs/Avatar';
 import Messaging from '../tabs/Messaging';
 import BusinessPlan from '../tabs/BusinessPlan';
 import SalesTax from '../tabs/SalesTax';
+import Frameworks from '../tabs/Frameworks';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -20,6 +21,7 @@ const TABS = [
   { id: 'messaging', label: 'Messaging' },
   { id: 'plan', label: 'Business Plan' },
   { id: 'salestax', label: 'Sales Tax' },
+  { id: 'frameworks', label: 'Frameworks' },
 ];
 
 const TAB_COMPONENTS = {
@@ -32,6 +34,7 @@ const TAB_COMPONENTS = {
   messaging: Messaging,
   plan: BusinessPlan,
   salestax: SalesTax,
+  frameworks: Frameworks,
 };
 
 export default function Layout({ onLogout }) {
