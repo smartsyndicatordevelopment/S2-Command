@@ -77,7 +77,7 @@ export default function AnalystPanel({ activeTab }) {
         className="fixed z-40 flex flex-col items-center justify-center gap-1.5"
         style={{
           top: '130px',
-          right: open ? '400px' : '0',
+          right: open ? '580px' : '0',
           width: '32px',
           height: '88px',
           backgroundColor: 'var(--c-card)',
