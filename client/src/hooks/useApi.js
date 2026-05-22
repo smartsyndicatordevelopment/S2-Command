@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useContext } from 'react';
+import { AppContext } from '../context/AppContext';
+import { getDemoResponse } from '../data/demoData';
 
 export function useApi(url) {
-  const [data, setData] = useState(null);
+  const { isDemo } = useContext(AppContext);
+  const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(!!url);
-  const [error, setError] = useState(null);
+  const [error, setError]     = useState(null);
   const abortRef = useRef(null);
 
   const fetchData = useCallback(async () => {
@@ -49,9 +52,23 @@ export function useApi(url) {
       setError(null);
       return () => {};
     }
+    if (isDemo) {
+      setData(getDemoResponse(url));
+      setLoading(false);
+      setError(null);
+      return;
+    }
     fetchData();
     return () => abortRef.current?.abort();
-  }, [fetchData, url]);
+  }, [fetchData, url, isDemo]);
 
-  return { data, loading, error, refetch: fetchData };
+  const refetch = useCallback(() => {
+    if (isDemo) {
+      setData(getDemoResponse(url));
+      return;
+    }
+    fetchData();
+  }, [isDemo, url, fetchData]);
+
+  return { data, loading, error, refetch };
 }

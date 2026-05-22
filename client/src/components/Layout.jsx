@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { LogOut, ChevronDown } from 'lucide-react';
+import { LogOut, ChevronDown, Sun, Moon, Database, Eye } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import AnalystPanel from './AnalystPanel';
 import Overview from '../tabs/Overview';
 import Financials from '../tabs/Financials';
 import Targets from '../tabs/Targets';
@@ -43,15 +45,15 @@ const NAV_ITEMS = [
 ];
 
 const TAB_COMPONENTS = {
-  overview: Overview,
+  overview:   Overview,
   financials: Financials,
-  targets: Targets,
-  customers: Customers,
-  sales: SalesAds,
-  avatar: Avatar,
-  messaging: Messaging,
-  plan: BusinessPlan,
-  salestax: SalesTax,
+  targets:    Targets,
+  customers:  Customers,
+  sales:      SalesAds,
+  avatar:     Avatar,
+  messaging:  Messaging,
+  plan:       BusinessPlan,
+  salestax:   SalesTax,
   frameworks: Frameworks,
 };
 
@@ -83,7 +85,10 @@ function NavDropdown({ item, activeTab, onSelect }) {
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded border border-border bg-bg shadow-lg py-1">
+        <div
+          className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded border py-1"
+          style={{ backgroundColor: 'var(--c-card)', borderColor: 'var(--c-border)' }}
+        >
           {item.children.map(child => (
             <button
               key={child.id}
@@ -103,8 +108,34 @@ function NavDropdown({ item, activeTab, onSelect }) {
   );
 }
 
+function Toggle({ checked, onChange, label }) {
+  return (
+    <button
+      onClick={onChange}
+      className="relative flex-shrink-0 rounded-full transition-colors duration-200"
+      style={{
+        width: '28px',
+        height: '16px',
+        backgroundColor: checked ? '#5c3ff4' : 'rgba(255,255,255,0.12)',
+      }}
+      title={label}
+    >
+      <span
+        className="absolute rounded-full bg-white transition-transform duration-200"
+        style={{
+          top: '2px',
+          width: '12px',
+          height: '12px',
+          transform: checked ? 'translateX(14px)' : 'translateX(2px)',
+        }}
+      />
+    </button>
+  );
+}
+
 export default function Layout({ onLogout }) {
   const [activeTab, setActiveTab] = useState('overview');
+  const { theme, toggleTheme, isDemo, toggleDemo } = useApp();
 
   const handleLogout = async () => {
     await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
@@ -116,7 +147,10 @@ export default function Layout({ onLogout }) {
   return (
     <div className="flex flex-col h-screen bg-bg overflow-hidden">
       {/* Top nav */}
-      <header className="flex items-center justify-between px-6 border-b border-border flex-shrink-0" style={{ height: '52px' }}>
+      <header
+        className="flex items-center justify-between px-6 border-b border-border flex-shrink-0"
+        style={{ height: '52px' }}
+      >
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-7 h-7 rounded bg-purple-muted">
             <span className="text-purple text-xs font-bold">S2</span>
@@ -149,14 +183,46 @@ export default function Layout({ onLogout }) {
           )}
         </nav>
 
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-1.5 text-muted hover:text-white transition-colors text-xs"
-        >
-          <LogOut size={13} />
-          <span>Sign out</span>
-        </button>
+        {/* Right controls */}
+        <div className="flex items-center gap-4">
+          {/* Light / Dark toggle */}
+          <div className="flex items-center gap-1.5">
+            <Moon size={11} className="text-muted flex-shrink-0" />
+            <Toggle checked={theme === 'light'} onChange={toggleTheme} label="Toggle light/dark mode" />
+            <Sun size={11} className="text-muted flex-shrink-0" />
+          </div>
+
+          {/* Live / Demo toggle */}
+          <div className="flex items-center gap-1.5">
+            <Database size={11} className="text-muted flex-shrink-0" />
+            <Toggle checked={isDemo} onChange={toggleDemo} label="Toggle demo/live data" />
+            <span className="text-xs text-muted">Demo</span>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 text-muted hover:text-white transition-colors text-xs"
+          >
+            <LogOut size={13} />
+            <span>Sign out</span>
+          </button>
+        </div>
       </header>
+
+      {/* Demo mode banner */}
+      {isDemo && (
+        <div
+          className="flex items-center justify-center gap-2 py-1 text-xs font-medium flex-shrink-0"
+          style={{
+            backgroundColor: 'rgba(92,63,244,0.12)',
+            color: '#5c3ff4',
+            borderBottom: '1px solid rgba(92,63,244,0.2)',
+          }}
+        >
+          <Eye size={11} />
+          Demo mode -- showing sample data
+        </div>
+      )}
 
       {/* Tab content */}
       <main className="flex-1 overflow-auto">
@@ -164,6 +230,9 @@ export default function Layout({ onLogout }) {
           <ActiveComponent />
         </div>
       </main>
+
+      {/* Business Analyst slide-out -- always present */}
+      <AnalystPanel activeTab={activeTab} />
     </div>
   );
 }

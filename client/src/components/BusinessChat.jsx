@@ -88,7 +88,7 @@ function renderContent(text) {
 
 // -- Main component --
 
-export default function BusinessChat({ context }) {
+export default function BusinessChat({ context, style = {} }) {
   const [chats, setChats]           = useState(() => loadChats());
   const [activeChatId, setActiveChatId] = useState(() => loadChats()[0]?.id || null);
   const [input, setInput]           = useState('');
@@ -201,11 +201,11 @@ export default function BusinessChat({ context }) {
   };
 
   return (
-    <div className="rounded-lg border overflow-hidden flex" style={{ borderColor: '#2a2a3a', backgroundColor: '#16161f', height: '480px' }}>
+    <div className="rounded-lg border overflow-hidden flex" style={{ borderColor: 'var(--c-border)', backgroundColor: 'var(--c-card)', height: '480px', ...style }}>
 
       {/* Sidebar -- saved chats */}
-      <div className="flex flex-col border-r" style={{ width: '220px', borderColor: '#2a2a3a', flexShrink: 0 }}>
-        <div className="flex items-center justify-between px-3 py-3 border-b" style={{ borderColor: '#2a2a3a' }}>
+      <div className="flex flex-col border-r" style={{ width: '220px', borderColor: 'var(--c-border)', flexShrink: 0 }}>
+        <div className="flex items-center justify-between px-3 py-3 border-b" style={{ borderColor: 'var(--c-border)' }}>
           <span className="text-xs font-medium uppercase tracking-widest" style={{ color: '#6b7280' }}>Chats</span>
           <button
             onClick={startNewChat}
@@ -261,7 +261,7 @@ export default function BusinessChat({ context }) {
       <div className="flex flex-col flex-1 min-w-0">
 
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b flex-shrink-0" style={{ borderColor: '#2a2a3a' }}>
+        <div className="flex items-center gap-2 px-4 py-3 border-b flex-shrink-0" style={{ borderColor: 'var(--c-border)' }}>
           <Bot size={14} style={{ color: '#5c3ff4' }} />
           <span className="text-xs font-medium" style={{ color: '#9ca3af' }}>
             {activeChat ? activeChat.title : 'Business Analyst'}
@@ -323,7 +323,7 @@ export default function BusinessChat({ context }) {
 
         {/* Input */}
         <div className="flex-shrink-0 px-4 pb-4 pt-2">
-          <div className="flex items-end gap-2 rounded-lg border px-3 py-2" style={{ borderColor: '#2a2a3a', backgroundColor: 'rgba(255,255,255,0.03)' }}>
+          <div className="flex items-end gap-2 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--c-border)', backgroundColor: 'var(--c-subtle)' }}>
             <textarea
               ref={textareaRef}
               value={input}

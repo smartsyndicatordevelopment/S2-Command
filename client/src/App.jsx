@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Login from './components/Login';
 import Layout from './components/Layout';
+import { AppProvider } from './context/AppContext';
 
 export default function App() {
   const [auth, setAuth] = useState(null); // null = checking, true/false
@@ -24,5 +25,9 @@ export default function App() {
     return <Login onLogin={() => setAuth(true)} />;
   }
 
-  return <Layout onLogout={() => setAuth(false)} />;
+  return (
+    <AppProvider>
+      <Layout onLogout={() => setAuth(false)} />
+    </AppProvider>
+  );
 }

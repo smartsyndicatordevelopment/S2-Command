@@ -2,7 +2,6 @@ import { useApi } from '../hooks/useApi';
 import StatCard from '../components/ui/StatCard';
 import Card from '../components/ui/Card';
 import ErrorState from '../components/ui/ErrorState';
-import BusinessChat from '../components/BusinessChat';
 
 function fmt(cents) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100);
@@ -36,17 +35,6 @@ export default function Overview() {
   const targetMRR      = 20000;
   const mrrProgress    = Math.min((mrr / targetMRR) * 100, 100);
   const recentSubs     = [...allSubs].sort((a, b) => b.created - a.created).slice(0, 5);
-
-  const chatContext = {
-    mrr,
-    arr,
-    uniqueClients,
-    subscriptionCount: allSubs.length,
-    ytdRevenue,
-    targetMRR,
-    recentSignups: recentSubs,
-    subscriptions: allSubs,
-  };
 
   return (
     <div className="space-y-6">
@@ -136,11 +124,6 @@ export default function Overview() {
         )}
       </Card>
 
-      {/* Business chat -- always rendered so history persists across loads */}
-      <div>
-        <p className="text-xs font-medium uppercase tracking-widest text-muted mb-3">Business Analyst</p>
-        <BusinessChat context={chatContext} />
-      </div>
     </div>
   );
 }
