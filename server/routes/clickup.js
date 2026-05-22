@@ -1,20 +1,7 @@
 const router = require('express').Router();
-const fs     = require('fs');
-const path   = require('path');
 const fetch  = require('node-fetch');
 
-const CONFIG_PATH = path.join(__dirname, '../../sessions/clickup-config.json');
 const CLICKUP_BASE = 'https://api.clickup.com/api/v2';
-
-function readConfig() {
-  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); }
-  catch { return { apiKey: '', teamId: '' }; }
-}
-
-function writeConfig(cfg) {
-  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
-}
 
 async function withRetry(fn, attempts = 3) {
   for (let i = 0; i < attempts; i++) {
@@ -28,29 +15,13 @@ async function withRetry(fn, attempts = 3) {
 
 // GET /api/clickup/config
 router.get('/clickup/config', (req, res) => {
-  const cfg = readConfig();
+  const key = process.env.CLICKUP_API_KEY || '';
   res.json({
-    hasKey:     !!cfg.apiKey,
-    keyPreview: cfg.apiKey ? `...${cfg.apiKey.slice(-6)}` : null,
-    teamId:     cfg.teamId || '',
+    hasKey:     !!key,
+    keyPreview: key ? `...${key.slice(-6)}` : null,
+    teamId:     process.env.CLICKUP_TEAM_ID || '',
+    source:     'env',
   });
-});
-
-// POST /api/clickup/config
-router.post('/clickup/config', (req, res) => {
-  const { apiKey, teamId } = req.body;
-  const existing = readConfig();
-  writeConfig({
-    apiKey:  typeof apiKey  === 'string' ? (apiKey  || existing.apiKey)  : existing.apiKey,
-    teamId:  typeof teamId  === 'string' ? (teamId  || existing.teamId)  : existing.teamId,
-  });
-  res.json({ ok: true });
-});
-
-// DELETE /api/clickup/config
-router.delete('/clickup/config', (req, res) => {
-  writeConfig({ apiKey: '', teamId: '' });
-  res.json({ ok: true });
 });
 
 // POST /api/clickup/proxy
@@ -59,8 +30,8 @@ router.post('/clickup/proxy', async (req, res) => {
 
   if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
 
-  const cfg = readConfig();
-  if (!cfg.apiKey) return res.status(400).json({ error: 'No ClickUp API key configured. Add your key in the ClickUp MCP tab.' });
+  const apiKey = process.env.CLICKUP_API_KEY;
+  if (!apiKey) return res.status(400).json({ error: 'CLICKUP_API_KEY environment variable is not set on the server.' });
 
   let url = `${CLICKUP_BASE}${endpoint}`;
   for (const [k, v] of Object.entries(pathParams)) {
@@ -76,7 +47,7 @@ router.post('/clickup/proxy', async (req, res) => {
   const opts = {
     method,
     headers: {
-      'Authorization': cfg.apiKey,
+      'Authorization': apiKey,
       'Content-Type':  'application/json',
     },
   };
@@ -88,13 +59,8 @@ router.post('/clickup/proxy', async (req, res) => {
   try {
     const { status, data } = await withRetry(async () => {
       const r = await fetch(url, opts);
-      let data;
       const ct = r.headers.get('content-type') || '';
-      if (ct.includes('application/json')) {
-        data = await r.json();
-      } else {
-        data = { raw: await r.text() };
-      }
+      const data = ct.includes('application/json') ? await r.json() : { raw: await r.text() };
       return { status: r.status, data };
     });
     res.json({ status, data, url });

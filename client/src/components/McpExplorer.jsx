@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Key, Play, CheckCircle } from 'lucide-react';
+import { Key, Play, CheckCircle, AlertTriangle } from 'lucide-react';
 import Card from './ui/Card';
 
 function methodBadge(method) {
@@ -25,12 +25,7 @@ export default function McpExplorer({
 }) {
   const [hasKey, setHasKey] = useState(false);
   const [keyPreview, setKeyPreview] = useState(null);
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [extraValues, setExtraValues] = useState(() =>
-    Object.fromEntries(configFields.map(f => [f.key, '']))
-  );
-  const [configSaving, setConfigSaving] = useState(false);
-  const [configMsg, setConfigMsg] = useState(null);
+  const [extraValues, setExtraValues] = useState({});
 
   const [selectedCatId, setSelectedCatId] = useState(categories[0]?.id || null);
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
@@ -48,9 +43,7 @@ export default function McpExplorer({
       .then(data => {
         setHasKey(data.hasKey || false);
         setKeyPreview(data.keyPreview || null);
-        setExtraValues(prev =>
-          Object.fromEntries(configFields.map(f => [f.key, data[f.key] || '']))
-        );
+        setExtraValues(Object.fromEntries(configFields.map(f => [f.key, data[f.key] || ''])));
       })
       .catch(() => {});
   }, [configRoute]);
@@ -67,38 +60,6 @@ export default function McpExplorer({
     setBodyText(selectedEndpoint.bodyExample || '');
     setResponse(null);
   }, [selectedEndpoint?.id]);
-
-  async function saveConfig() {
-    setConfigSaving(true);
-    setConfigMsg(null);
-    try {
-      await fetch(configRoute, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: apiKeyInput, ...extraValues }),
-      });
-      const data = await fetch(configRoute, { credentials: 'include' }).then(r => r.json());
-      setHasKey(data.hasKey || false);
-      setKeyPreview(data.keyPreview || null);
-      setApiKeyInput('');
-      setConfigMsg({ ok: true, text: 'Configuration saved' });
-    } catch {
-      setConfigMsg({ ok: false, text: 'Save failed -- check server connection' });
-    }
-    setConfigSaving(false);
-  }
-
-  async function clearConfig() {
-    try {
-      await fetch(configRoute, { method: 'DELETE', credentials: 'include' });
-      setHasKey(false);
-      setKeyPreview(null);
-      setConfigMsg({ ok: true, text: 'Configuration cleared' });
-    } catch {
-      setConfigMsg({ ok: false, text: 'Clear failed' });
-    }
-  }
 
   async function runRequest() {
     if (!selectedEndpoint) return;
@@ -128,12 +89,7 @@ export default function McpExplorer({
     setRunning(false);
   }
 
-  const inputStyle = {
-    backgroundColor: 'var(--c-subtle-5)',
-    border: '1px solid var(--c-border)',
-    color: 'var(--c-text-primary)',
-    outline: 'none',
-  };
+  const inputStyle = { backgroundColor: 'var(--c-subtle-5)', border: '1px solid var(--c-border)', color: 'var(--c-text-primary)', outline: 'none' };
 
   return (
     <div className="space-y-4">
@@ -142,74 +98,37 @@ export default function McpExplorer({
         <p className="text-xs mt-0.5" style={{ color: 'var(--c-muted)' }}>{subtitle}</p>
       </div>
 
-      {/* Config card */}
+      {/* Config status */}
       <Card>
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-3">
           <Key size={13} style={{ color: '#5c3ff4' }} />
           <p className="text-xs font-medium uppercase tracking-widest" style={{ color: 'var(--c-muted)' }}>
             API Configuration
           </p>
-          {hasKey && (
-            <span
-              className="ml-auto flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e' }}
-            >
-              <CheckCircle size={10} />
-              Key saved {keyPreview}
-            </span>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-          <div className="space-y-1">
-            <label className="text-xs" style={{ color: 'var(--c-muted)' }}>{apiKeyLabel}</label>
-            <input
-              type="password"
-              value={apiKeyInput}
-              onChange={e => setApiKeyInput(e.target.value)}
-              placeholder={hasKey ? 'Enter new key to replace...' : apiKeyPlaceholder}
-              className="w-full px-3 py-2 rounded text-xs font-mono"
-              style={inputStyle}
-            />
+          <div className="ml-auto flex items-center gap-4">
+            {configFields.map(f => extraValues[f.key] && (
+              <span key={f.key} className="text-xs font-mono" style={{ color: 'var(--c-muted)' }}>
+                {f.label}: <span style={{ color: 'var(--c-dim)' }}>{extraValues[f.key]}</span>
+              </span>
+            ))}
+            {hasKey ? (
+              <span
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e' }}
+              >
+                <CheckCircle size={11} />
+                {apiKeyLabel} configured {keyPreview}
+              </span>
+            ) : (
+              <span
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: 'rgba(234,179,8,0.1)', color: '#eab308' }}
+              >
+                <AlertTriangle size={11} />
+                API key not set -- add to Railway environment variables
+              </span>
+            )}
           </div>
-          {configFields.map(field => (
-            <div key={field.key} className="space-y-1">
-              <label className="text-xs" style={{ color: 'var(--c-muted)' }}>{field.label}</label>
-              <input
-                type="text"
-                value={extraValues[field.key] || ''}
-                onChange={e => setExtraValues(prev => ({ ...prev, [field.key]: e.target.value }))}
-                placeholder={field.placeholder}
-                className="w-full px-3 py-2 rounded text-xs font-mono"
-                style={inputStyle}
-              />
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={saveConfig}
-            disabled={configSaving}
-            className="px-3 py-1.5 rounded text-xs font-medium"
-            style={{ backgroundColor: '#5c3ff4', color: '#fff', cursor: configSaving ? 'not-allowed' : 'pointer', opacity: configSaving ? 0.7 : 1 }}
-          >
-            {configSaving ? 'Saving...' : 'Save Configuration'}
-          </button>
-          {hasKey && (
-            <button
-              onClick={clearConfig}
-              className="px-3 py-1.5 rounded text-xs font-medium"
-              style={{ border: '1px solid var(--c-border)', color: 'var(--c-muted)', backgroundColor: 'transparent' }}
-            >
-              Clear Key
-            </button>
-          )}
-          {configMsg && (
-            <span className="text-xs" style={{ color: configMsg.ok ? '#22c55e' : '#ef4444' }}>
-              {configMsg.text}
-            </span>
-          )}
         </div>
       </Card>
 
