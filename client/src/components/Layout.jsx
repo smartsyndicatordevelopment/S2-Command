@@ -42,8 +42,8 @@ const NAV_ITEMS = [
     label: 'Tools',
     children: [
       { id: 'salestax',   label: 'Sales Tax Calculator' },
-      { id: 'ghlmcp',    label: 'GHL MCP Builder' },
-      { id: 'clickupmcp', label: 'ClickUp MCP Builder' },
+      { id: 'ghlmcp',    label: 'GHL Agent' },
+      { id: 'clickupmcp', label: 'ClickUp Agent' },
     ],
   },
 ];

@@ -105,7 +105,7 @@ export default function ClickUpMcp() {
     <div className="flex flex-col" style={{ height: 'calc(100vh - 116px)' }}>
       {/* Header */}
       <div className="mb-4 flex-shrink-0">
-        <h1 className="text-lg font-semibold" style={{ color: 'var(--c-text-primary)' }}>ClickUp Assistant</h1>
+        <h1 className="text-lg font-semibold" style={{ color: 'var(--c-text-primary)' }}>ClickUp Agent</h1>
         <p className="text-xs mt-0.5" style={{ color: 'var(--c-muted)' }}>
           Talk to your ClickUp workspace in plain English -- tasks, goals, time tracking, and more
         </p>
