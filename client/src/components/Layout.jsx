@@ -12,6 +12,8 @@ import Messaging from '../tabs/Messaging';
 import BusinessPlan from '../tabs/BusinessPlan';
 import SalesTax from '../tabs/SalesTax';
 import Frameworks from '../tabs/Frameworks';
+import GHLMcp from '../tabs/GHLMcp';
+import ClickUpMcp from '../tabs/ClickUpMcp';
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview' },
@@ -39,7 +41,9 @@ const NAV_ITEMS = [
     id: 'tools-group',
     label: 'Tools',
     children: [
-      { id: 'salestax', label: 'Sales Tax Calculator' },
+      { id: 'salestax',   label: 'Sales Tax Calculator' },
+      { id: 'ghlmcp',    label: 'GHL MCP Builder' },
+      { id: 'clickupmcp', label: 'ClickUp MCP Builder' },
     ],
   },
 ];
@@ -55,6 +59,8 @@ const TAB_COMPONENTS = {
   plan:       BusinessPlan,
   salestax:   SalesTax,
   frameworks: Frameworks,
+  ghlmcp:     GHLMcp,
+  clickupmcp: ClickUpMcp,
 };
 
 function NavDropdown({ item, activeTab, onSelect }) {
