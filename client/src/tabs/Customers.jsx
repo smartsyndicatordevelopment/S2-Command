@@ -153,7 +153,7 @@ export default function Customers() {
   const cac                = windowNewCustomers > 0 ? spend / windowNewCustomers : 0;
 
   // LTV:CAC -- recalculates from each card's independent window
-  const ltvCacRatio = qbConfigured && cac > 0 && ltvDollars > 0 ? ltvDollars / cac : 0;
+  const ltvCacRatio = cac > 0 && ltvDollars > 0 ? ltvDollars / cac : 0;
 
   const upcomingRenewals = useMemo(() => {
     const now    = Math.floor(Date.now() / 1000);
@@ -328,7 +328,7 @@ export default function Customers() {
             {(subs.loading || mktg.loading)
               ? <span className="inline-block w-7 h-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
               : <p className="font-mono text-3xl font-bold text-white cursor-help">
-                  {qbConfigured && cac > 0 ? fmtMrr(cac) : '--'}
+                  {windowNewCustomers > 0 ? (cac > 0 ? fmtMrr(cac) : '$0') : '--'}
                 </p>}
             {cacHover && !subs.loading && !mktg.loading && (
               <div className="absolute bottom-full left-0 mb-2 z-50 min-w-max max-w-xs bg-card border border-border rounded-lg px-3 py-2 text-xs text-muted shadow-lg whitespace-pre-line pointer-events-none">

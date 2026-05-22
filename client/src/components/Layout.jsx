@@ -116,17 +116,18 @@ function Toggle({ checked, onChange, label }) {
       style={{
         width: '28px',
         height: '16px',
+        overflow: 'hidden',
         backgroundColor: checked ? '#5c3ff4' : 'rgba(255,255,255,0.12)',
       }}
       title={label}
     >
       <span
-        className="absolute rounded-full bg-white transition-transform duration-200"
+        className="absolute rounded-full bg-white transition-all duration-200"
         style={{
           top: '2px',
+          left: checked ? '14px' : '2px',
           width: '12px',
           height: '12px',
-          transform: checked ? 'translateX(14px)' : 'translateX(2px)',
         }}
       />
     </button>
