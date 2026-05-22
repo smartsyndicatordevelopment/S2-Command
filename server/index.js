@@ -14,7 +14,7 @@ const salesTaxRouter = require('./routes/salesTax');
 const chatRouter     = require('./routes/chat');
 
 const app = express();
-const isDev = process.env.NODE_ENV !== 'production';
+const isDev = process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT_NAME;
 
 app.set('trust proxy', 1); // trust Railway's load balancer for HTTPS detection
 
@@ -119,6 +119,10 @@ if (!isDev) {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`S2 Command running on http://localhost:${PORT}`);
-  if (isDev) console.log(`Client dev server at http://localhost:5173`);
+  console.log(`S2 Command running on port ${PORT}`);
+  if (isDev) {
+    console.log(`Development mode: expecting client dev server at http://localhost:5173`);
+  } else {
+    console.log(`Production mode: serving client static files from client/dist`);
+  }
 });
