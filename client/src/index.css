@@ -14,6 +14,14 @@
   --c-text:          #f1f5f9;
   --c-subtle:        rgba(255,255,255,0.03);
   --c-subtle-hover:  rgba(255,255,255,0.06);
+  /* component-level tokens */
+  --c-text-primary:  #f1f5f9;
+  --c-msg-ai-bg:     rgba(255,255,255,0.04);
+  --c-msg-ai-text:   #d1d5db;
+  --c-avatar-bg:     rgba(255,255,255,0.06);
+  --c-bar-track:     #2a2a3a;
+  --c-subtle-8:      rgba(255,255,255,0.08);
+  --c-subtle-5:      rgba(255,255,255,0.05);
 }
 
 [data-theme="light"] {
@@ -25,6 +33,14 @@
   --c-text:          #0f0f14;
   --c-subtle:        rgba(0,0,0,0.02);
   --c-subtle-hover:  rgba(0,0,0,0.05);
+  /* component-level overrides */
+  --c-text-primary:  #0f0f14;
+  --c-msg-ai-bg:     rgba(0,0,0,0.04);
+  --c-msg-ai-text:   #1f2937;
+  --c-avatar-bg:     rgba(0,0,0,0.06);
+  --c-bar-track:     #e0e0e8;
+  --c-subtle-8:      rgba(0,0,0,0.06);
+  --c-subtle-5:      rgba(0,0,0,0.04);
 }
 
 body {
@@ -48,4 +64,45 @@ code, pre, kbd, samp {
   .text-muted { color: var(--c-muted); }
   .text-dim   { color: var(--c-dim); }
   .border-subtle { border-color: var(--c-border); }
+}
+
+/* -- Light mode Tailwind overrides -- */
+
+/* text-white on page/card backgrounds becomes primary text color.
+   Excluded: elements that also carry bg-purple (intentional white-on-purple). */
+[data-theme="light"] .text-white:not(.bg-purple):not(.bg-purple-hover) {
+  color: var(--c-text);
+}
+
+/* hover:text-white → hover to primary text color */
+[data-theme="light"] .hover\:text-white:hover {
+  color: var(--c-text);
+}
+
+/* hover:bg-white/5 → invert to subtle black tint */
+[data-theme="light"] .hover\:bg-white\/5:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+
+/* bg-white/10 used for letter badges in Frameworks */
+[data-theme="light"] .bg-white\/10 {
+  background-color: rgba(0,0,0,0.08);
+}
+
+/* border-white/30 used in Frameworks SMART card borders */
+[data-theme="light"] .border-white\/30 {
+  border-color: rgba(0,0,0,0.18);
+}
+
+/* -- Recharts light mode -- */
+/* SVG fill can be overridden by CSS; !important needed to beat Recharts inline styles */
+[data-theme="light"] .recharts-cartesian-axis-tick text {
+  fill: var(--c-muted) !important;
+}
+[data-theme="light"] .recharts-cartesian-grid line {
+  stroke: var(--c-border) !important;
+}
+[data-theme="light"] .recharts-polar-grid-angle line,
+[data-theme="light"] .recharts-polar-grid-concentric-polygon {
+  stroke: var(--c-border) !important;
 }

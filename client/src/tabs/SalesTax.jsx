@@ -20,7 +20,7 @@ const SOURCE_LABELS = {
 const SOURCE_STYLES = {
   customer_address: { backgroundColor: 'rgba(92,63,244,0.15)', color: '#5c3ff4' },
   billing_details:  { backgroundColor: 'rgba(34,197,94,0.1)',  color: '#22c55e' },
-  zip:              { backgroundColor: 'rgba(255,255,255,0.05)', color: '#6b7280' },
+  zip:              { backgroundColor: 'var(--c-subtle-5)', color: 'var(--c-muted)' },
   manual:           { backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b' },
 };
 
@@ -407,9 +407,9 @@ export default function SalesTax() {
                 <button
                   onClick={() => exportFullReport({ result, derived, monthLabel, periodStart, periodEnd })}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors"
-                  style={{ borderColor: '#2a2a3a', color: '#9ca3af' }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#5c3ff4'; e.currentTarget.style.color = '#fff'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2a3a'; e.currentTarget.style.color = '#9ca3af'; }}
+                  style={{ borderColor: 'var(--c-border)', color: 'var(--c-dim)' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#5c3ff4'; e.currentTarget.style.color = '#5c3ff4'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--c-border)'; e.currentTarget.style.color = 'var(--c-dim)'; }}
                 >
                   <Download size={11} />
                   Download Report
@@ -630,7 +630,7 @@ export default function SalesTax() {
                                   style={
                                     cls === 'TX'
                                       ? { backgroundColor: 'rgba(34,197,94,0.12)', color: '#22c55e' }
-                                      : { backgroundColor: 'rgba(255,255,255,0.05)', color: '#6b7280' }
+                                      : { backgroundColor: 'var(--c-subtle-5)', color: 'var(--c-muted)' }
                                   }
                                 >
                                   {cls === 'TX' ? 'Texas' : 'Other'}
@@ -658,8 +658,8 @@ export default function SalesTax() {
                                 <button
                                   onClick={() => classify(t.id, 'OTHER')}
                                   className="px-2 py-1 rounded text-xs font-medium border transition-colors"
-                                  style={{ borderColor: '#2a2a3a', color: '#6b7280' }}
-                                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'; }}
+                                  style={{ borderColor: 'var(--c-border)', color: 'var(--c-muted)' }}
+                                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--c-msg-ai-bg)'; }}
                                   onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                                 >
                                   Other
@@ -722,7 +722,7 @@ export default function SalesTax() {
                         <td className="py-2.5 pr-4 text-white">{t.name}</td>
                         <td className="py-2.5 pr-4 text-dim">{t.email}</td>
                         <td className="py-2.5 pr-4 text-muted">{fmtDate(t.date)}</td>
-                        <td className="py-2.5 pr-4 font-mono text-xs" style={{ color: '#9ca3af' }}>{normalizeState(t.resolvedState)}</td>
+                        <td className="py-2.5 pr-4 font-mono text-xs" style={{ color: 'var(--c-dim)' }}>{normalizeState(t.resolvedState)}</td>
                         <td className="py-2.5 pr-4 font-mono text-right text-dim">
                           {fmt(t.amount / 100)}
                         </td>
@@ -790,8 +790,8 @@ export default function SalesTax() {
               >
                 <div className="flex items-center gap-2">
                   {showExclusions
-                    ? <ChevronDown size={13} style={{ color: '#6b7280' }} />
-                    : <ChevronRight size={13} style={{ color: '#6b7280' }} />}
+                    ? <ChevronDown size={13} style={{ color: 'var(--c-muted)' }} />
+                    : <ChevronRight size={13} style={{ color: 'var(--c-muted)' }} />}
                   <p className="text-xs font-medium uppercase tracking-widest text-muted">
                     Excluded Transactions ({result.excludedTransactions.length})
                   </p>
@@ -829,7 +829,7 @@ export default function SalesTax() {
                             <td className="py-2.5">
                               <span
                                 className="text-xs px-1.5 py-0.5 rounded"
-                                style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#6b7280' }}
+                                style={{ backgroundColor: 'var(--c-subtle-5)', color: 'var(--c-muted)' }}
                               >
                                 {t.reason}
                               </span>

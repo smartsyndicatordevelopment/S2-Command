@@ -40,9 +40,9 @@ export default function Targets() {
               <p className="text-xs text-muted">Target</p>
               <div
                 className="w-14 rounded-t-md border border-border relative"
-                style={{ height: `${BAR_MAX_PX}px`, backgroundColor: '#2a2a3a' }}
+                style={{ height: `${BAR_MAX_PX}px`, backgroundColor: 'var(--c-bar-track)' }}
               >
-                <div className="absolute inset-x-0 bottom-0 rounded-t-md" style={{ height: `${BAR_MAX_PX}px`, backgroundColor: '#2a2a3a' }} />
+                <div className="absolute inset-x-0 bottom-0 rounded-t-md" style={{ height: `${BAR_MAX_PX}px`, backgroundColor: 'var(--c-bar-track)' }} />
               </div>
               <p className="font-mono text-sm text-dim">$20K</p>
             </div>
@@ -52,7 +52,7 @@ export default function Targets() {
               <p className="text-xs text-muted">Actual</p>
               <div
                 className="w-14 rounded-t-sm relative"
-                style={{ height: `${BAR_MAX_PX}px`, backgroundColor: '#2a2a3a', borderRadius: '4px 4px 0 0' }}
+                style={{ height: `${BAR_MAX_PX}px`, backgroundColor: 'var(--c-bar-track)', borderRadius: '4px 4px 0 0' }}
               >
                 {!subs.loading && (
                   <div
@@ -102,13 +102,13 @@ export default function Targets() {
           <div className="flex items-end justify-center gap-12">
             <div className="flex flex-col items-center gap-2">
               <p className="text-xs text-muted">Target</p>
-              <div className="w-14 rounded-t-md" style={{ height: `${BAR_MAX_PX}px`, backgroundColor: '#2a2a3a' }} />
+              <div className="w-14 rounded-t-md" style={{ height: `${BAR_MAX_PX}px`, backgroundColor: 'var(--c-bar-track)' }} />
               <p className="font-mono text-sm text-dim">{clientTarget}</p>
             </div>
 
             <div className="flex flex-col items-center gap-2">
               <p className="text-xs text-muted">Actual</p>
-              <div className="w-14 relative" style={{ height: `${BAR_MAX_PX}px`, backgroundColor: '#2a2a3a', borderRadius: '4px 4px 0 0' }}>
+              <div className="w-14 relative" style={{ height: `${BAR_MAX_PX}px`, backgroundColor: 'var(--c-bar-track)', borderRadius: '4px 4px 0 0' }}>
                 {!subs.loading && (
                   <div
                     className="absolute inset-x-0 bottom-0 transition-all"

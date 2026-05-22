@@ -71,7 +71,7 @@ function SortTh({ label, colKey, sortKey, sortDir, onSort, className = '', align
 function DaysChip({ days }) {
   if (days <= 7)  return <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>{days}d</span>;
   if (days <= 21) return <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>{days}d</span>;
-  return          <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: '#9ca3af' }}>{days}d</span>;
+  return          <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--c-avatar-bg)', color: 'var(--c-dim)' }}>{days}d</span>;
 }
 
 function Section({ title, count, defaultOpen = false, children }) {
@@ -82,14 +82,14 @@ function Section({ title, count, defaultOpen = false, children }) {
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left"
-        style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}
+        style={{ backgroundColor: 'var(--c-subtle)' }}
       >
         <Icon size={14} className="text-muted flex-shrink-0" />
         <span className="text-sm font-medium text-white">{title}</span>
         {count !== undefined && (
           <span
             className="text-xs font-mono px-2 py-0.5 rounded ml-1"
-            style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#9ca3af' }}
+            style={{ backgroundColor: 'var(--c-subtle-8)', color: 'var(--c-dim)' }}
           >
             {count}
           </span>

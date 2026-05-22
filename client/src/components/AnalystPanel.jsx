@@ -14,14 +14,14 @@ export default function AnalystPanel({ activeTab }) {
           top: '52px',
           right: 0,
           bottom: 0,
-          width: open ? '400px' : '0',
+          width: open ? '580px' : '0',
           transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
         <div
           className="flex flex-col"
           style={{
-            width: '400px',
+            width: '580px',
             height: '100%',
             backgroundColor: 'var(--c-card)',
             borderLeft: '1px solid var(--c-border)',
