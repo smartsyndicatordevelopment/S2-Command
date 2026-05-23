@@ -7,6 +7,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const { runMigrations } = require('./lib/db');
+const { startSyncRunner } = require('./lib/syncEngine');
 
 const authRouter = require('./routes/auth');
 const qbOAuthRouter = require('./routes/qbOAuth');
@@ -21,6 +22,7 @@ const ghlEmailStudioRouter = require('./routes/ghlEmailStudio');
 const clickupChatRouter   = require('./routes/clickupChat');
 const fbChatRouter        = require('./routes/fbChat');
 const sessionsRouter      = require('./routes/sessions');
+const integrateRouter     = require('./routes/integrate');
 
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT_NAME;
@@ -128,6 +130,7 @@ app.use('/api', ghlEmailStudioRouter);
 app.use('/api', clickupChatRouter);
 app.use('/api', fbChatRouter);
 app.use('/api', sessionsRouter);
+app.use('/api', integrateRouter);
 
 // Serve React build in production
 if (!isDev) {
@@ -149,6 +152,9 @@ runMigrations()
         console.log(`Production mode: serving client static files from client/dist`);
       }
     });
+    // Start the Dynamic Sync Engine runner after the server is up and migrations are applied
+    const SYNC_INTERVAL_MINUTES = parseInt(process.env.SYNC_INTERVAL_MINUTES || '15', 10);
+    startSyncRunner(SYNC_INTERVAL_MINUTES);
   })
   .catch((err) => {
     console.error('Migration failed -- server not started:', err.message);
