@@ -789,7 +789,7 @@ export default function GHLMcp() {
               onChange={e => setStudioPrompt(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) generate(); }}
               rows={3}
-              placeholder="Describe the email sequence you want to create... e.g. 'Write a 4-email welcome sequence for new investors who just signed up for Smart Syndicator. Emphasize how we help them raise capital efficiently.'"
+              placeholder="Describe the email sequence to write... e.g. 'Write a 4-email welcome sequence for new investors. Emphasize how Smart Syndicator helps them raise capital efficiently and manage investor relations professionally.'"
               className="w-full px-4 py-3 rounded-lg text-sm resize-none"
               style={{
                 backgroundColor: 'var(--c-subtle-5)',

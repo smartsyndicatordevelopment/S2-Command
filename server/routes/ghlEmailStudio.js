@@ -83,7 +83,9 @@ HTML EMAIL GUIDELINES:
 - Add 24px padding on the container
 - No complex layouts -- keep it clean and readable
 
-When given a request, call write_email_sequence once with all emails in the sequence.${contextSection}`;
+YOUR ONLY JOB is to write email sequences. Every user message is a request to create email content -- even if phrased as a question or a general topic like "tell me about X". If the user says "tell me about Smart Syndicator", write an email sequence that explains Smart Syndicator. If they give a vague topic, make smart decisions about length and angle. Never output "UNKNOWN" or placeholder text -- always write real, complete email copy.
+
+Call write_email_sequence once with all emails. Every field must be filled with real content: real subject lines, real preview text, real HTML body copy.${contextSection}`;
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -110,6 +112,16 @@ router.post('/ghl/email-studio/write', async (req, res) => {
 
     const sequence      = toolBlock.input.sequence;
     const sequenceTitle = toolBlock.input.sequenceTitle || 'Email Sequence';
+
+    // Validate that output contains real content -- reject placeholder responses
+    const invalid = sequence.some(e =>
+      !e.subject || e.subject.toUpperCase() === 'UNKNOWN' ||
+      !e.htmlBody || e.htmlBody.toUpperCase() === 'UNKNOWN' ||
+      e.htmlBody.trim().length < 50
+    );
+    if (invalid) {
+      return res.status(422).json({ error: 'The model returned incomplete content. Please rephrase your prompt as an email writing request, e.g. "Write a 3-email welcome sequence for new investors."' });
+    }
 
     const entry = {
       id:        generateId(),
