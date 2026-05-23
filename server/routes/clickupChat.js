@@ -1,30 +1,46 @@
 const router    = require('express').Router();
 const fetch     = require('node-fetch');
 const Anthropic = require('@anthropic-ai/sdk');
-const fs        = require('fs');
-const path      = require('path');
+const db        = require('../lib/db');
 
 const CLICKUP_BASE = 'https://api.clickup.com/api/v2';
-const LOG_PATH     = path.join(__dirname, '../../sessions/clickup-changelog.json');
-const MAX_ENTRIES  = 100;
+const AGENT        = 'clickup';
 
-// ─── Changelog helpers ────────────────────────────────────────────────────────
+// ─── Changelog helpers (DB-backed) ────────────────────────────────────────────
 
-function readLog() {
-  try { return JSON.parse(fs.readFileSync(LOG_PATH, 'utf8')); }
-  catch { return []; }
-}
-
-function writeLog(entries) {
-  fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true });
-  fs.writeFileSync(LOG_PATH, JSON.stringify(entries, null, 2));
-}
-
-function addLogEntry(entry) {
-  const entries = readLog();
-  entries.unshift(entry);
-  writeLog(entries.slice(0, MAX_ENTRIES));
+async function addLogEntry(entry) {
+  try {
+    await db.query(
+      `INSERT INTO changelog_entries(id, agent, timestamp, description, action, result, undo_action, undone)
+       VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        entry.id,
+        AGENT,
+        entry.timestamp,
+        entry.description,
+        JSON.stringify(entry.action),
+        JSON.stringify(entry.result || {}),
+        entry.undoAction ? JSON.stringify(entry.undoAction) : null,
+        false,
+      ]
+    );
+  } catch (err) {
+    console.error('clickupChat: failed to write changelog entry:', err.message);
+  }
   return entry;
+}
+
+async function persistMessages(sessionId, userText, assistantText) {
+  if (!sessionId) return;
+  try {
+    await db.query(
+      `INSERT INTO chat_messages(session_id, role, content) VALUES($1,'user',$2),($1,'assistant',$3)`,
+      [sessionId, userText, assistantText]
+    );
+    await db.query('UPDATE chat_sessions SET updated_at = now() WHERE id = $1', [sessionId]);
+  } catch (err) {
+    console.error('clickupChat: failed to persist messages:', err.message);
+  }
 }
 
 function generateId() {
@@ -182,7 +198,7 @@ Capabilities:
 
 // POST /api/clickup/chat
 router.post('/clickup/chat', async (req, res) => {
-  const { messages, context } = req.body;
+  const { messages, context, sessionId } = req.body;
   if (!Array.isArray(messages) || !messages.length) {
     return res.status(400).json({ error: 'messages array required' });
   }
@@ -205,6 +221,12 @@ router.post('/clickup/chat', async (req, res) => {
 
       if (resp.stop_reason === 'end_turn') {
         const text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+
+        if (sessionId) {
+          const lastUser = [...messages].reverse().find(m => m.role === 'user');
+          await persistMessages(sessionId, lastUser?.content || '', text);
+        }
+
         return res.json({ message: text });
       }
 
@@ -221,6 +243,7 @@ router.post('/clickup/chat', async (req, res) => {
             id:      generateId(),
             message: claudeText,
             preview: preview_description,
+            sessionId,
             action: {
               method,
               endpoint,
@@ -258,7 +281,7 @@ router.post('/clickup/chat', async (req, res) => {
 
 // POST /api/clickup/execute -- user approved a pending action
 router.post('/clickup/execute', async (req, res) => {
-  const { action, preview } = req.body;
+  const { action, preview, sessionId } = req.body;
   if (!action?.method || !action?.endpoint) {
     return res.status(400).json({ error: 'action.method and action.endpoint required' });
   }
@@ -276,14 +299,13 @@ router.post('/clickup/execute', async (req, res) => {
   const success    = result.status < 300;
   const undoAction = success ? buildUndoAction(action.method, action.endpoint, action.pathParams, result, action.beforeState) : null;
 
-  const entry = addLogEntry({
+  const entry = await addLogEntry({
     id:          generateId(),
     timestamp:   new Date().toISOString(),
     description: preview,
     action:      { method: action.method, endpoint: action.endpoint, pathParams: action.pathParams, queryParams: action.queryParams, body: action.body },
     result:      { status: result.status },
     undoAction,
-    undone:      false,
   });
 
   let message = success ? `Done. ${preview}` : `Failed (${result.status}). ${JSON.stringify(result.data).slice(0, 200)}`;
@@ -298,38 +320,57 @@ router.post('/clickup/execute', async (req, res) => {
     message = summary.content.find(b => b.type === 'text')?.text || message;
   } catch { /* fall back to simple message */ }
 
+  if (sessionId) {
+    await persistMessages(sessionId, `[Action approved] ${preview}`, message);
+  }
+
   res.json({ message, logEntryId: entry.id, success });
 });
 
 // GET /api/clickup/changelog
-router.get('/clickup/changelog', (req, res) => {
-  res.json(readLog());
+router.get('/clickup/changelog', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, timestamp, description, action, result, undo_action AS "undoAction", undone
+       FROM changelog_entries WHERE agent = $1 ORDER BY timestamp DESC LIMIT 100`,
+      [AGENT]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('clickup changelog error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch changelog' });
+  }
 });
 
 // POST /api/clickup/undo/:entryId
 router.post('/clickup/undo/:entryId', async (req, res) => {
-  const entries = readLog();
-  const idx     = entries.findIndex(e => e.id === req.params.entryId);
+  let entry;
+  try {
+    const { rows } = await db.query(
+      'SELECT * FROM changelog_entries WHERE id = $1 AND agent = $2',
+      [req.params.entryId, AGENT]
+    );
+    entry = rows[0];
+  } catch (err) {
+    return res.status(500).json({ error: 'Database error' });
+  }
 
-  if (idx === -1) return res.status(404).json({ error: 'Log entry not found' });
-
-  const entry = entries[idx];
-  if (entry.undone)    return res.status(400).json({ error: 'Already undone' });
-  if (!entry.undoAction) return res.status(400).json({ error: 'This action cannot be automatically undone' });
+  if (!entry) return res.status(404).json({ error: 'Log entry not found' });
+  if (entry.undone) return res.status(400).json({ error: 'Already undone' });
+  if (!entry.undo_action) return res.status(400).json({ error: 'This action cannot be automatically undone' });
 
   const apiKey = process.env.CLICKUP_API_KEY;
   if (!apiKey) return res.status(400).json({ error: 'CLICKUP_API_KEY not configured' });
 
+  const undoAction = entry.undo_action;
   let result;
   try {
-    const { method, endpoint, pathParams, queryParams, body } = entry.undoAction;
-    result = await callClickUpApi(method, endpoint, pathParams, queryParams, body);
+    result = await callClickUpApi(undoAction.method, undoAction.endpoint, undoAction.pathParams, undoAction.queryParams, undoAction.body);
   } catch (err) {
     return res.status(502).json({ error: `Undo failed: ${err.message}` });
   }
 
-  entries[idx].undone = true;
-  writeLog(entries);
+  await db.query('UPDATE changelog_entries SET undone = true WHERE id = $1', [entry.id]);
 
   res.json({ success: result.status < 300, status: result.status });
 });

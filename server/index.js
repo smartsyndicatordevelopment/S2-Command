@@ -6,6 +6,8 @@ const path = require('path');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
+const { runMigrations } = require('./lib/db');
+
 const authRouter = require('./routes/auth');
 const qbOAuthRouter = require('./routes/qbOAuth');
 const stripeRouter = require('./routes/stripe');
@@ -18,6 +20,7 @@ const ghlChatRouter       = require('./routes/ghlChat');
 const ghlEmailStudioRouter = require('./routes/ghlEmailStudio');
 const clickupChatRouter   = require('./routes/clickupChat');
 const fbChatRouter        = require('./routes/fbChat');
+const sessionsRouter      = require('./routes/sessions');
 
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT_NAME;
@@ -124,6 +127,7 @@ app.use('/api', ghlChatRouter);
 app.use('/api', ghlEmailStudioRouter);
 app.use('/api', clickupChatRouter);
 app.use('/api', fbChatRouter);
+app.use('/api', sessionsRouter);
 
 // Serve React build in production
 if (!isDev) {
@@ -134,11 +138,19 @@ if (!isDev) {
 }
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`S2 Command running on port ${PORT}`);
-  if (isDev) {
-    console.log(`Development mode: expecting client dev server at http://localhost:5173`);
-  } else {
-    console.log(`Production mode: serving client static files from client/dist`);
-  }
-});
+
+runMigrations()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`S2 Command running on port ${PORT}`);
+      if (isDev) {
+        console.log(`Development mode: expecting client dev server at http://localhost:5173`);
+      } else {
+        console.log(`Production mode: serving client static files from client/dist`);
+      }
+    });
+  })
+  .catch((err) => {
+    console.error('Migration failed -- server not started:', err.message);
+    process.exit(1);
+  });
