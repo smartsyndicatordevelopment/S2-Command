@@ -14,6 +14,7 @@ import SalesTax from '../tabs/SalesTax';
 import Frameworks from '../tabs/Frameworks';
 import GHLMcp from '../tabs/GHLMcp';
 import ClickUpMcp from '../tabs/ClickUpMcp';
+import FBAds from '../tabs/FBAds';
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview' },
@@ -44,6 +45,7 @@ const NAV_ITEMS = [
       { id: 'salestax',   label: 'Sales Tax Calculator' },
       { id: 'ghlmcp',    label: 'GHL Agent' },
       { id: 'clickupmcp', label: 'ClickUp Agent' },
+      { id: 'fbads',     label: 'Facebook Ads Agent' },
     ],
   },
 ];
@@ -61,6 +63,7 @@ const TAB_COMPONENTS = {
   frameworks: Frameworks,
   ghlmcp:     GHLMcp,
   clickupmcp: ClickUpMcp,
+  fbads:      FBAds,
 };
 
 function NavDropdown({ item, activeTab, onSelect }) {

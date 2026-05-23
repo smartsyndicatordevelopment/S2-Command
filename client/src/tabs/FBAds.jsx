@@ -2,24 +2,25 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { Message, TypingIndicator, ApprovalCard, ChangelogPanel } from '../components/AgentChat';
 
-const GREETING = "Hi! I'm connected to your ClickUp workspace. Ask me about tasks, projects, goals, time tracking, or team activity. I can also create and update records -- all changes require your approval before executing.";
+const GREETING = "Hi! I'm connected to your Facebook Ads account. Ask me about campaigns, ad sets, spend, performance, audiences, and more. I can also create and update records -- all changes require your approval before executing.";
 
 const QUICK_PROMPTS = [
-  'Show me my open tasks',
-  'What tasks are due this week?',
-  'List my spaces and folders',
-  'Show me recent task comments',
-  'What are my active goals?',
-  'How much time was logged this week?',
-  'Show me tasks assigned to me',
-  'List all workspace members',
+  'Show my active campaigns',
+  'What did I spend this week?',
+  'List my ad sets and budgets',
+  'Show campaign performance this month',
+  'What ads are running right now?',
+  'Show my top performing ads',
+  'What is my cost per lead this month?',
+  'List my custom audiences',
 ];
 
-export default function ClickUpMcp() {
+export default function FBAds() {
   const [messages, setMessages]           = useState([{ role: 'assistant', content: GREETING }]);
   const [input, setInput]                 = useState('');
   const [loading, setLoading]             = useState(false);
   const [hasKey, setHasKey]               = useState(null);
+  const [accountId, setAccountId]         = useState('');
   const [pendingAction, setPendingAction] = useState(null);
   const [approving, setApproving]         = useState(false);
   const [showLog, setShowLog]             = useState(false);
@@ -28,14 +29,17 @@ export default function ClickUpMcp() {
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    fetch('/api/clickup/config', { credentials: 'include' })
+    fetch('/api/fb/config', { credentials: 'include' })
       .then(r => r.json())
-      .then(d => setHasKey(!!d.hasKey))
+      .then(d => {
+        setHasKey(!!(d.hasToken && d.hasAccountId));
+        setAccountId(d.accountId || '');
+      })
       .catch(() => setHasKey(false));
   }, []);
 
   const refreshLog = useCallback(() => {
-    fetch('/api/clickup/changelog', { credentials: 'include' })
+    fetch('/api/fb/changelog', { credentials: 'include' })
       .then(r => r.json())
       .then(setChangelog)
       .catch(() => {});
@@ -58,7 +62,7 @@ export default function ClickUpMcp() {
 
     try {
       const apiMessages = next.slice(1).map(m => ({ role: m.role, content: m.content }));
-      const res  = await fetch('/api/clickup/chat', {
+      const res  = await fetch('/api/fb/chat', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -82,7 +86,7 @@ export default function ClickUpMcp() {
     if (!pendingAction) return;
     setApproving(true);
     try {
-      const res  = await fetch('/api/clickup/execute', {
+      const res  = await fetch('/api/fb/execute', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -106,7 +110,7 @@ export default function ClickUpMcp() {
   async function undo(entryId) {
     setUndoingId(entryId);
     try {
-      const res  = await fetch(`/api/clickup/undo/${entryId}`, { method: 'POST', credentials: 'include' });
+      const res  = await fetch(`/api/fb/undo/${entryId}`, { method: 'POST', credentials: 'include' });
       const data = await res.json();
       if (data.success) {
         setMessages(prev => [...prev, { role: 'assistant', content: 'Change undone successfully.' }]);
@@ -127,9 +131,11 @@ export default function ClickUpMcp() {
       {/* Header */}
       <div className="mb-4 flex-shrink-0 flex items-start justify-between">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--c-text-primary)' }}>ClickUp Agent</h1>
+          <h1 className="text-lg font-semibold" style={{ color: 'var(--c-text-primary)' }}>Facebook Ads Agent</h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--c-muted)' }}>
-            Talk to your ClickUp workspace -- all changes require your approval before executing
+            {accountId
+              ? `Account ${accountId} -- all changes require your approval before executing`
+              : 'Manage your Facebook ad campaigns in plain English -- all changes require approval'}
           </p>
         </div>
         <button
@@ -146,7 +152,7 @@ export default function ClickUpMcp() {
       {hasKey === false && (
         <div className="mb-4 px-4 py-2.5 rounded text-xs flex-shrink-0"
           style={{ backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', color: '#eab308' }}>
-          CLICKUP_API_KEY is not set. Add it to your Railway environment variables to enable this agent.
+          FB_ACCESS_TOKEN and FB_AD_ACCOUNT_ID are required. Add them to your Railway environment variables to enable this agent.
         </div>
       )}
 
@@ -198,8 +204,8 @@ export default function ClickUpMcp() {
           disabled={isBlocked || !hasKey}
           placeholder={
             pendingAction ? 'Approve or cancel the proposed change above first' :
-            hasKey === false ? 'Configure CLICKUP_API_KEY in Railway to start' :
-            'Ask anything about your ClickUp workspace... (Enter to send)'
+            hasKey === false ? 'Configure FB_ACCESS_TOKEN and FB_AD_ACCOUNT_ID in Railway to start' :
+            'Ask about campaigns, spend, performance, audiences... (Enter to send)'
           }
           className="flex-1 px-4 py-3 rounded-lg text-sm resize-none"
           style={{
