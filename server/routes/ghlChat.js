@@ -154,12 +154,23 @@ const WRITE_TOOL = {
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-function buildSystem() {
+function buildSystem(context) {
   const locationId = process.env.GHL_LOCATION_ID || '';
-  return `You are a GoHighLevel assistant for Smart Syndicator, a real estate syndication SaaS platform. You help Brandon interact with his GHL sub-account using plain English.
+  const contextSection = context
+    ? `\n\nBusiness context (use this to inform your responses and writing):\n${context}`
+    : '';
+
+  return `You are a GoHighLevel assistant for Smart Syndicator, a real estate syndication SaaS platform that helps real estate syndicators raise capital, manage investor relations, and run professional investment operations. You help Brandon, the founder, interact with his GHL sub-account using plain English.
 
 Default Location ID: ${locationId}
 Always include this as locationId (or location_id) in every request that requires it.
+
+WRITING RULES -- follow these at all times:
+- Never use em dashes. Use commas, colons, or a plain double hyphen (--) instead.
+- Use American English spelling only (analyze, color, favor, center, etc.)
+- Be concise and direct -- no filler phrases or unnecessary caveats
+- Format responses with headers and bullet points when listing multiple items
+- Summarize data clearly -- never show raw JSON
 
 You have two tools:
 1. read_ghl_data -- for all GET/read operations. Executes immediately.
@@ -179,17 +190,15 @@ Capabilities:
 - Custom Fields, Tags, Locations: settings and metadata
 
 Response style:
-- Summarize data clearly -- never show raw JSON
-- Use line breaks to organize lists of records
 - For writes, include a specific preview_description (e.g. "Add tag 'investor' to contact Jane Doe (ID: abc123)")
-- Keep responses concise and direct`;
+- When listing records, use a clean format: name, key detail, ID${contextSection}`;
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 // POST /api/ghl/chat
 router.post('/ghl/chat', async (req, res) => {
-  const { messages } = req.body;
+  const { messages, context } = req.body;
   if (!Array.isArray(messages) || !messages.length) {
     return res.status(400).json({ error: 'messages array required' });
   }
@@ -205,7 +214,7 @@ router.post('/ghl/chat', async (req, res) => {
       const resp = await anthropic.messages.create({
         model:      'claude-sonnet-4-6',
         max_tokens: 2048,
-        system:     buildSystem(),
+        system:     buildSystem(context || null),
         tools:      [READ_TOOL, WRITE_TOOL],
         messages:   current,
       });

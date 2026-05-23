@@ -14,8 +14,9 @@ const salesTaxRouter = require('./routes/salesTax');
 const chatRouter     = require('./routes/chat');
 const ghlRouter        = require('./routes/ghl');
 const clickupRouter    = require('./routes/clickup');
-const ghlChatRouter    = require('./routes/ghlChat');
-const clickupChatRouter = require('./routes/clickupChat');
+const ghlChatRouter       = require('./routes/ghlChat');
+const ghlEmailStudioRouter = require('./routes/ghlEmailStudio');
+const clickupChatRouter   = require('./routes/clickupChat');
 
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT_NAME;
@@ -115,6 +116,7 @@ app.use('/api', chatRouter);
 app.use('/api', ghlRouter);
 app.use('/api', clickupRouter);
 app.use('/api', ghlChatRouter);
+app.use('/api', ghlEmailStudioRouter);
 app.use('/api', clickupChatRouter);
 
 // Serve React build in production
