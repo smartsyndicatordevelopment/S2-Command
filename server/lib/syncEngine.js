@@ -308,7 +308,7 @@ async function runAllSyncs() {
 
 let syncTimer = null;
 
-function startSyncRunner(intervalMinutes = 15) {
+function startSyncRunner(intervalMinutes = 15, onAfterSync = null) {
   if (syncTimer) return; // already running
 
   const ms = intervalMinutes * 60 * 1000;
@@ -323,6 +323,8 @@ function startSyncRunner(intervalMinutes = 15) {
     } catch (e) {
       console.error('[SyncEngine] runAllSyncs failed:', e.message);
     }
+    // Refresh metrics cache after every sync run
+    if (onAfterSync) onAfterSync().catch(() => {});
   }, ms);
 
   // Unref so the timer doesn't keep the process alive on its own

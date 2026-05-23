@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const Stripe = require('stripe');
+const metricsCache = require('../lib/metricsCache');
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const OWNER_EMAIL = process.env.OWNER_EMAIL || 'operations@smartsyndicator.com';
@@ -84,8 +85,7 @@ function buildSubResult(sub, actualAmount) {
   };
 }
 
-router.get('/subscriptions', async (req, res) => {
-  try {
+async function computeSubscriptions() {
     const now = Math.floor(Date.now() / 1000);
     const twelveMonthsAgo = now - 365 * 24 * 60 * 60;
 
@@ -261,7 +261,7 @@ router.get('/subscriptions', async (req, res) => {
         created: inv.created,
       }));
 
-    res.json({
+    return {
       subscriptions: activeResults,
       pausedSubscriptions: pausedResults,
       canceledSubscriptions: canceledResults,
@@ -276,7 +276,42 @@ router.get('/subscriptions', async (req, res) => {
       newCustomersLast3Months,
       windowedStats,
       monthlySignups,
-    });
+    };
+}
+
+async function computeRevenue() {
+  const now = new Date();
+  const ytdStart = Math.floor(new Date(now.getFullYear(), 0, 1).getTime() / 1000);
+
+  const allInvoices = await listAll((cursor) =>
+    stripe.invoices.list({
+      status: 'paid',
+      created: { gte: ytdStart },
+      limit: 100,
+      ...(cursor && { starting_after: cursor }),
+    })
+  );
+
+  const ytdRevenue = allInvoices.reduce((sum, inv) => sum + inv.total, 0);
+
+  return {
+    ytdRevenue,
+    invoiceCount: allInvoices.length,
+    year: now.getFullYear(),
+  };
+}
+
+// ─── Cache-first route handlers ───────────────────────────────────────────────
+
+router.get('/subscriptions', async (req, res) => {
+  try {
+    const cached = await metricsCache.get('stripe:subscriptions');
+    if (cached) return res.json(cached.data);
+
+    // Cache miss -- compute live and store for next request
+    const data = await computeSubscriptions();
+    await metricsCache.set('stripe:subscriptions', data);
+    res.json(data);
   } catch (err) {
     console.error('Stripe /subscriptions error:', err.message);
     res.status(500).json({ error: 'Failed to fetch subscriptions' });
@@ -285,25 +320,12 @@ router.get('/subscriptions', async (req, res) => {
 
 router.get('/revenue', async (req, res) => {
   try {
-    const now = new Date();
-    const ytdStart = Math.floor(new Date(now.getFullYear(), 0, 1).getTime() / 1000);
+    const cached = await metricsCache.get('stripe:revenue');
+    if (cached) return res.json(cached.data);
 
-    const allInvoices = await listAll((cursor) =>
-      stripe.invoices.list({
-        status: 'paid',
-        created: { gte: ytdStart },
-        limit: 100,
-        ...(cursor && { starting_after: cursor }),
-      })
-    );
-
-    const ytdRevenue = allInvoices.reduce((sum, inv) => sum + inv.total, 0);
-
-    res.json({
-      ytdRevenue,
-      invoiceCount: allInvoices.length,
-      year: now.getFullYear(),
-    });
+    const data = await computeRevenue();
+    await metricsCache.set('stripe:revenue', data);
+    res.json(data);
   } catch (err) {
     console.error('Stripe /revenue error:', err.message);
     res.status(500).json({ error: 'Failed to fetch revenue' });
@@ -311,3 +333,5 @@ router.get('/revenue', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.computeSubscriptions = computeSubscriptions;
+module.exports.computeRevenue = computeRevenue;

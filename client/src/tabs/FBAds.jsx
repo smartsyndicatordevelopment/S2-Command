@@ -209,6 +209,24 @@ export default function FBAds() {
     if (!userText || loading || approving || !hasKey || pendingAction) return;
     setInput('');
 
+    // Auto-create a named session on first message if none is active
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      const autoName = userText.length > 42 ? userText.slice(0, 42).trimEnd() + '...' : userText;
+      try {
+        const sr = await fetch('/api/sessions/fb', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: autoName }),
+        });
+        const ns = await sr.json();
+        sessionId = ns.id;
+        setSessions(prev => [ns, ...prev]);
+        setCurrentSessionId(ns.id);
+      } catch { /* continue without session if creation fails */ }
+    }
+
     const next = [...messages, { role: 'user', content: userText }];
     setMessages(next);
     setLoading(true);
@@ -219,7 +237,7 @@ export default function FBAds() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages, sessionId: currentSessionId || undefined }),
+        body: JSON.stringify({ messages: apiMessages, sessionId: sessionId || undefined }),
       });
       const data = await res.json();
 

@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 
 const { runMigrations } = require('./lib/db');
 const { startSyncRunner } = require('./lib/syncEngine');
+const { warmAll: warmMetrics } = require('./lib/metricsCache');
 
 const authRouter = require('./routes/auth');
 const qbOAuthRouter = require('./routes/qbOAuth');
@@ -152,9 +153,12 @@ runMigrations()
         console.log(`Production mode: serving client static files from client/dist`);
       }
     });
+    // Warm the metrics cache immediately after startup (non-blocking)
+    warmMetrics().catch(() => {});
+
     // Start the Dynamic Sync Engine runner after the server is up and migrations are applied
     const SYNC_INTERVAL_MINUTES = parseInt(process.env.SYNC_INTERVAL_MINUTES || '15', 10);
-    startSyncRunner(SYNC_INTERVAL_MINUTES);
+    startSyncRunner(SYNC_INTERVAL_MINUTES, warmMetrics);
   })
   .catch((err) => {
     console.error('Migration failed -- server not started:', err.message);
