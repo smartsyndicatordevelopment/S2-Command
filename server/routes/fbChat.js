@@ -40,7 +40,7 @@ function normalizeAccountId(id) {
 // ─── Facebook API helpers ─────────────────────────────────────────────────────
 
 async function callFbApi(method, fbPath, queryParams, body) {
-  const token = process.env.FB_ACCESS_TOKEN;
+  const token = process.env.META_ACCESS_TOKEN;
 
   const qs = new URLSearchParams({ access_token: token });
   for (const [k, v] of Object.entries(queryParams || {})) {
@@ -139,7 +139,7 @@ const WRITE_TOOL = {
 // ─── System prompt ────────────────────────────────────────────────────────────
 
 function buildSystem(context) {
-  const rawAccountId = process.env.FB_AD_ACCOUNT_ID || '';
+  const rawAccountId = process.env.META_AD_ACCOUNT_ID || '';
   const accountId    = normalizeAccountId(rawAccountId);
   const contextSection = context ? `\n\nBusiness context (use to inform your responses):\n${context}` : '';
 
@@ -179,8 +179,8 @@ Capabilities:
 
 // GET /api/fb/config
 router.get('/fb/config', (req, res) => {
-  const token     = process.env.FB_ACCESS_TOKEN;
-  const accountId = process.env.FB_AD_ACCOUNT_ID;
+  const token     = process.env.META_ACCESS_TOKEN;
+  const accountId = process.env.META_AD_ACCOUNT_ID;
   res.json({
     hasToken:     !!token,
     hasAccountId: !!accountId,
@@ -196,8 +196,8 @@ router.post('/fb/chat', async (req, res) => {
     return res.status(400).json({ error: 'messages array required' });
   }
 
-  const token = process.env.FB_ACCESS_TOKEN;
-  if (!token) return res.status(400).json({ error: 'FB_ACCESS_TOKEN not configured on server' });
+  const token = process.env.META_ACCESS_TOKEN;
+  if (!token) return res.status(400).json({ error: 'META_ACCESS_TOKEN not configured on server' });
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   let current = messages.map(m => ({ role: m.role, content: m.content }));
@@ -272,8 +272,8 @@ router.post('/fb/execute', async (req, res) => {
     return res.status(400).json({ error: 'action.method and action.path required' });
   }
 
-  const token = process.env.FB_ACCESS_TOKEN;
-  if (!token) return res.status(400).json({ error: 'FB_ACCESS_TOKEN not configured' });
+  const token = process.env.META_ACCESS_TOKEN;
+  if (!token) return res.status(400).json({ error: 'META_ACCESS_TOKEN not configured' });
 
   const fbPath = action.path || action.endpoint;
   let result;
@@ -327,8 +327,8 @@ router.post('/fb/undo/:entryId', async (req, res) => {
   if (entry.undone)      return res.status(400).json({ error: 'Already undone' });
   if (!entry.undoAction) return res.status(400).json({ error: 'This action cannot be automatically undone' });
 
-  const token = process.env.FB_ACCESS_TOKEN;
-  if (!token) return res.status(400).json({ error: 'FB_ACCESS_TOKEN not configured' });
+  const token = process.env.META_ACCESS_TOKEN;
+  if (!token) return res.status(400).json({ error: 'META_ACCESS_TOKEN not configured' });
 
   let result;
   try {

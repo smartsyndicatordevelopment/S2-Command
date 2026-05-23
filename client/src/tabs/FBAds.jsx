@@ -152,7 +152,7 @@ export default function FBAds() {
       {hasKey === false && (
         <div className="mb-4 px-4 py-2.5 rounded text-xs flex-shrink-0"
           style={{ backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', color: '#eab308' }}>
-          FB_ACCESS_TOKEN and FB_AD_ACCOUNT_ID are required. Add them to your Railway environment variables to enable this agent.
+          META_ACCESS_TOKEN and META_AD_ACCOUNT_ID are required. Add them to your Railway environment variables to enable this agent.
         </div>
       )}
 
@@ -204,7 +204,7 @@ export default function FBAds() {
           disabled={isBlocked || !hasKey}
           placeholder={
             pendingAction ? 'Approve or cancel the proposed change above first' :
-            hasKey === false ? 'Configure FB_ACCESS_TOKEN and FB_AD_ACCOUNT_ID in Railway to start' :
+            hasKey === false ? 'Configure META_ACCESS_TOKEN and META_AD_ACCOUNT_ID in Railway to start' :
             'Ask about campaigns, spend, performance, audiences... (Enter to send)'
           }
           className="flex-1 px-4 py-3 rounded-lg text-sm resize-none"
