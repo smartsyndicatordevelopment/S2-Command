@@ -2,7 +2,7 @@ const router = require('express').Router();
 const Stripe = require('stripe');
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const OWNER_EMAIL = 'operations@smartsyndicator.com';
+const OWNER_EMAIL = process.env.OWNER_EMAIL || 'operations@smartsyndicator.com';
 
 // Map (listPrice cents, interval) -> display name for plans that have no Stripe nickname.
 // Key format: "<cents>|<interval>"

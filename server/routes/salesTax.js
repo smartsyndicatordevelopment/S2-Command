@@ -2,7 +2,7 @@ const router = require('express').Router();
 const Stripe = require('stripe');
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const OWNER_EMAIL = 'operations@smartsyndicator.com'; // self-purchase -- no legal consideration, exempt from sales tax
+const OWNER_EMAIL = process.env.OWNER_EMAIL || 'operations@smartsyndicator.com';
 const TX_ZIP_PREFIXES = ['75', '76', '77', '78', '79'];
 const TX_TAX_RATE = 0.0825;
 const TX_STATE_VALUES = new Set(['tx', 'texas']);

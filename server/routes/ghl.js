@@ -16,20 +16,28 @@ async function withRetry(fn, attempts = 3) {
 
 // GET /api/ghl/config
 router.get('/ghl/config', (req, res) => {
-  const key = process.env.GHL_API_KEY || '';
   res.json({
-    hasKey:     !!key,
-    keyPreview: key ? `...${key.slice(-6)}` : null,
-    locationId: process.env.GHL_LOCATION_ID || '',
-    source:     'env',
+    hasKey:        !!process.env.GHL_API_KEY,
+    hasLocationId: !!process.env.GHL_LOCATION_ID,
+    source:        'env',
   });
 });
+
+const ALLOWED_GHL_PREFIXES = [
+  '/contacts', '/conversations', '/opportunities', '/calendars', '/locations',
+  '/users', '/workflows', '/campaigns', '/forms', '/surveys', '/emails',
+  '/social-media-posting', '/blogs', '/products', '/payments', '/medias',
+  '/companies', '/funnels', '/links', '/snapshots',
+];
 
 // POST /api/ghl/proxy
 router.post('/ghl/proxy', async (req, res) => {
   const { method = 'GET', endpoint, pathParams = {}, queryParams = {}, body } = req.body;
 
   if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
+  if (!ALLOWED_GHL_PREFIXES.some(p => endpoint.startsWith(p))) {
+    return res.status(400).json({ error: 'endpoint not allowed' });
+  }
 
   const apiKey = process.env.GHL_API_KEY;
   if (!apiKey) return res.status(400).json({ error: 'GHL_API_KEY environment variable is not set on the server.' });

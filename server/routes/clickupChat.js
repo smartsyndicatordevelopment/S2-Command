@@ -139,6 +139,13 @@ const WRITE_TOOL = {
   },
 };
 
+// ─── Input sanitization ───────────────────────────────────────────────────────
+
+function sanitizeContext(ctx) {
+  if (!ctx || typeof ctx !== 'string') return null;
+  return ctx.slice(0, 1000).replace(/system:|assistant:|<\|.*?\|>/gi, '');
+}
+
 // ─── System prompt ────────────────────────────────────────────────────────────
 
 function buildSystem(context) {
@@ -191,7 +198,7 @@ router.post('/clickup/chat', async (req, res) => {
       const resp = await anthropic.messages.create({
         model:      'claude-sonnet-4-6',
         max_tokens: 2048,
-        system:     buildSystem(context || null),
+        system:     buildSystem(sanitizeContext(context)),
         tools:      [READ_TOOL, WRITE_TOOL],
         messages:   current,
       });

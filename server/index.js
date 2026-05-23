@@ -52,8 +52,12 @@ app.use(cors({
   credentials: true,
 }));
 
+if (!isDev && !process.env.SESSION_SECRET) {
+  throw new Error('SESSION_SECRET environment variable is required in production');
+}
+
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
+  secret: process.env.SESSION_SECRET || 'dev-secret-not-for-production',
   resave: false,
   saveUninitialized: false,
   cookie: {

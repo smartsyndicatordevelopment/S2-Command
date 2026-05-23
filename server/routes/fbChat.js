@@ -42,13 +42,16 @@ function normalizeAccountId(id) {
 async function callFbApi(method, fbPath, queryParams, body) {
   const token = process.env.META_ACCESS_TOKEN;
 
-  const qs = new URLSearchParams({ access_token: token });
+  const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(queryParams || {})) {
     if (v != null && v !== '') qs.append(k, String(v));
   }
 
-  const url  = `${FB_BASE}${fbPath}?${qs.toString()}`;
-  const opts = { method: method.toUpperCase(), headers: { 'Content-Type': 'application/json' } };
+  const url  = qs.toString() ? `${FB_BASE}${fbPath}?${qs.toString()}` : `${FB_BASE}${fbPath}`;
+  const opts = {
+    method: method.toUpperCase(),
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+  };
 
   if (body && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) {
     opts.body = JSON.stringify(body);
@@ -136,6 +139,13 @@ const WRITE_TOOL = {
   },
 };
 
+// ─── Input sanitization ───────────────────────────────────────────────────────
+
+function sanitizeContext(ctx) {
+  if (!ctx || typeof ctx !== 'string') return null;
+  return ctx.slice(0, 1000).replace(/system:|assistant:|<\|.*?\|>/gi, '');
+}
+
 // ─── System prompt ────────────────────────────────────────────────────────────
 
 function buildSystem(context) {
@@ -179,13 +189,9 @@ Capabilities:
 
 // GET /api/fb/config
 router.get('/fb/config', (req, res) => {
-  const token     = process.env.META_ACCESS_TOKEN;
-  const accountId = process.env.META_AD_ACCOUNT_ID;
   res.json({
-    hasToken:     !!token,
-    hasAccountId: !!accountId,
-    tokenPreview: token ? `...${token.slice(-6)}` : null,
-    accountId:    accountId ? normalizeAccountId(accountId) : null,
+    hasToken:     !!process.env.META_ACCESS_TOKEN,
+    hasAccountId: !!process.env.META_AD_ACCOUNT_ID,
   });
 });
 
@@ -207,7 +213,7 @@ router.post('/fb/chat', async (req, res) => {
       const resp = await anthropic.messages.create({
         model:      'claude-sonnet-4-6',
         max_tokens: 2048,
-        system:     buildSystem(context || null),
+        system:     buildSystem(sanitizeContext(context)),
         tools:      [READ_TOOL, WRITE_TOOL],
         messages:   current,
       });

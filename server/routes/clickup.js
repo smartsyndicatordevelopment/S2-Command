@@ -15,20 +15,26 @@ async function withRetry(fn, attempts = 3) {
 
 // GET /api/clickup/config
 router.get('/clickup/config', (req, res) => {
-  const key = process.env.CLICKUP_API_KEY || '';
   res.json({
-    hasKey:     !!key,
-    keyPreview: key ? `...${key.slice(-6)}` : null,
-    teamId:     process.env.CLICKUP_TEAM_ID || '',
-    source:     'env',
+    hasKey:    !!process.env.CLICKUP_API_KEY,
+    hasTeamId: !!process.env.CLICKUP_TEAM_ID,
+    source:    'env',
   });
 });
+
+const ALLOWED_CLICKUP_PREFIXES = [
+  '/team', '/space', '/folder', '/list', '/task', '/comment',
+  '/goal', '/key_result', '/view', '/group', '/webhook',
+];
 
 // POST /api/clickup/proxy
 router.post('/clickup/proxy', async (req, res) => {
   const { method = 'GET', endpoint, pathParams = {}, queryParams = {}, body } = req.body;
 
   if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
+  if (!ALLOWED_CLICKUP_PREFIXES.some(p => endpoint.startsWith(p))) {
+    return res.status(400).json({ error: 'endpoint not allowed' });
+  }
 
   const apiKey = process.env.CLICKUP_API_KEY;
   if (!apiKey) return res.status(400).json({ error: 'CLICKUP_API_KEY environment variable is not set on the server.' });
