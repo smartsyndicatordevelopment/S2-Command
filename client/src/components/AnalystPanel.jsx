@@ -14,14 +14,14 @@ export default function AnalystPanel({ activeTab }) {
           top: '52px',
           right: 0,
           bottom: 0,
-          width: open ? '580px' : '0',
+          width: open ? '50vw' : '0',
           transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
         <div
           className="flex flex-col"
           style={{
-            width: '580px',
+            width: '50vw',
             height: '100%',
             backgroundColor: 'var(--c-card)',
             borderLeft: '1px solid var(--c-border)',
@@ -77,7 +77,7 @@ export default function AnalystPanel({ activeTab }) {
         className="fixed z-40 flex flex-col items-center justify-center gap-1.5"
         style={{
           top: '130px',
-          right: open ? '580px' : '0',
+          right: open ? '50vw' : '0',
           width: '32px',
           height: '88px',
           backgroundColor: 'var(--c-card)',
