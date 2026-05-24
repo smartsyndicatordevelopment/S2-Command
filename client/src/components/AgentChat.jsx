@@ -1,7 +1,8 @@
-// Shared UI primitives used by all agent tabs (ClickUp, Facebook, etc.)
-// Import what you need: Message, TypingIndicator, ApprovalCard, ChangelogPanel, MethodBadge, timeAgo
+// Shared UI primitives used by all agent tabs.
+// Import what you need: Message, TypingIndicator, ApprovalCard, ChangelogPanel, MethodBadge, timeAgo, SessionSidebar
 import SimpleMarkdown from './SimpleMarkdown';
-import { AlertTriangle, CheckCircle, XCircle, Clock, RotateCcw } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, CheckCircle, XCircle, Clock, RotateCcw, Plus, Pencil, Trash2 } from 'lucide-react';
 
 export const METHOD_COLORS = {
   GET:    { bg: 'rgba(34,197,94,0.12)',  color: '#22c55e' },
@@ -179,6 +180,77 @@ export function ChangelogPanel({ entries, undoingId, onUndo }) {
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+export function SessionSidebar({ sessions, currentId, onSelect, onNew, onRename, onDelete, loading }) {
+  const [renamingId, setRenamingId]   = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  function startRename(e, session) {
+    e.stopPropagation();
+    setRenamingId(session.id);
+    setRenameValue(session.name);
+  }
+
+  async function commitRename(id) {
+    if (renameValue.trim()) await onRename(id, renameValue.trim());
+    setRenamingId(null);
+  }
+
+  return (
+    <div className="flex flex-col flex-shrink-0"
+      style={{ width: '200px', borderRight: '1px solid var(--c-border)', overflowY: 'auto' }}>
+      <div className="flex items-center justify-between px-3 py-2.5 flex-shrink-0"
+        style={{ borderBottom: '1px solid var(--c-border)' }}>
+        <span className="text-xs font-medium uppercase tracking-widest" style={{ color: 'var(--c-muted)' }}>Chats</span>
+        <button onClick={onNew} disabled={loading} title="New chat" className="p-1 rounded"
+          style={{ color: 'var(--c-muted)', cursor: loading ? 'not-allowed' : 'pointer' }}>
+          <Plus size={13} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {sessions.length === 0 && (
+          <p className="text-xs px-3 py-4" style={{ color: 'var(--c-muted)' }}>No chats yet</p>
+        )}
+        {sessions.map(s => (
+          <div key={s.id} onClick={() => onSelect(s.id)}
+            className="group flex items-center gap-1 px-3 py-2.5 cursor-pointer"
+            style={{
+              backgroundColor: s.id === currentId ? 'var(--c-subtle-5)' : 'transparent',
+              borderBottom: '1px solid var(--c-border)',
+              minHeight: '44px',
+            }}>
+            {renamingId === s.id ? (
+              <input autoFocus value={renameValue}
+                onChange={e => setRenameValue(e.target.value)}
+                onBlur={() => commitRename(s.id)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') commitRename(s.id);
+                  if (e.key === 'Escape') setRenamingId(null);
+                }}
+                onClick={e => e.stopPropagation()}
+                className="flex-1 text-xs px-1 py-0.5 rounded"
+                style={{ backgroundColor: 'var(--c-card)', border: '1px solid var(--c-border)', color: 'var(--c-text-primary)', outline: 'none', minWidth: 0 }}
+              />
+            ) : (
+              <span className="flex-1 text-xs truncate"
+                style={{ color: s.id === currentId ? 'var(--c-text-primary)' : 'var(--c-dim)' }}>
+                {s.name}
+              </span>
+            )}
+            {renamingId !== s.id && (
+              <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={e => startRename(e, s)} title="Rename" className="p-0.5 rounded"
+                  style={{ color: 'var(--c-muted)' }}><Pencil size={10} /></button>
+                <button onClick={e => { e.stopPropagation(); onDelete(s.id); }} title="Delete"
+                  className="p-0.5 rounded" style={{ color: 'var(--c-muted)' }}><Trash2 size={10} /></button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

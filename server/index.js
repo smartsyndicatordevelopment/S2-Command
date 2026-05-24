@@ -22,6 +22,8 @@ const ghlChatRouter       = require('./routes/ghlChat');
 const ghlEmailStudioRouter = require('./routes/ghlEmailStudio');
 const clickupChatRouter   = require('./routes/clickupChat');
 const fbChatRouter        = require('./routes/fbChat');
+const makeChatRouter      = require('./routes/makeChat');
+const qbChatRouter        = require('./routes/qbChat');
 const sessionsRouter      = require('./routes/sessions');
 const integrateRouter     = require('./routes/integrate');
 
@@ -130,6 +132,8 @@ app.use('/api', ghlChatRouter);
 app.use('/api', ghlEmailStudioRouter);
 app.use('/api', clickupChatRouter);
 app.use('/api', fbChatRouter);
+app.use('/api', makeChatRouter);
+app.use('/api', qbChatRouter);
 app.use('/api', sessionsRouter);
 app.use('/api', integrateRouter);
 
