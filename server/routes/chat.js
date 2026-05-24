@@ -128,42 +128,52 @@ function hasState(s) { return !!(s || '').trim(); }
 
 // -- Tool implementations --
 
-async function toolGetSubscriptions() {
+async function toolGetSubscriptions(status = 'active') {
+  const validStatuses = ['active', 'canceled', 'past_due', 'trialing', 'unpaid', 'all'];
+  const resolvedStatus = validStatuses.includes(status) ? status : 'active';
+
   const allSubs = await listAllStripe((cursor) =>
     stripe.subscriptions.list({
-      status: 'active', limit: 100, expand: ['data.customer'],
+      status: resolvedStatus, limit: 100, expand: ['data.customer'],
       ...(cursor && { starting_after: cursor }),
     })
   );
   const filtered = allSubs.filter(sub => {
     const email = (sub.customer?.email || '').toLowerCase();
-    return email !== OWNER_EMAIL && !sub.cancel_at;
+    return email !== OWNER_EMAIL;
   });
   const results = await Promise.all(filtered.map(async (sub) => {
     let actualAmount = null;
-    try {
-      const invoices = await withRetry(() =>
-        stripe.invoices.list({ subscription: sub.id, status: 'paid', limit: 1 })
-      );
-      if (invoices.data.length > 0) actualAmount = invoices.data[0].total;
-    } catch {}
+    if (sub.status === 'active' || sub.status === 'trialing') {
+      try {
+        const invoices = await withRetry(() =>
+          stripe.invoices.list({ subscription: sub.id, status: 'paid', limit: 1 })
+        );
+        if (invoices.data.length > 0) actualAmount = invoices.data[0].total;
+      } catch {}
+    }
     const price = sub.items.data[0]?.price;
     const listPrice = price?.unit_amount || 0;
     const charged = actualAmount !== null ? actualAmount : listPrice;
-    const mrrEq = price?.recurring?.interval === 'year' ? charged / 100 / 12 : charged / 100;
+    const mrrEq = (sub.status === 'active' || sub.status === 'trialing')
+      ? (price?.recurring?.interval === 'year' ? charged / 100 / 12 : charged / 100)
+      : 0;
     return {
       customerName: sub.customer?.name || sub.customer?.email || 'Unknown',
       customerEmail: sub.customer?.email || '',
       planName: resolvePlanName(price),
       interval: price?.recurring?.interval || 'month',
+      status: sub.status,
       chargedDollars: charged / 100,
       mrrEquivalent: mrrEq,
       started: new Date(sub.created * 1000).toLocaleDateString(),
-      nextPayment: new Date(sub.current_period_end * 1000).toLocaleDateString(),
+      canceledAt: sub.canceled_at ? new Date(sub.canceled_at * 1000).toLocaleDateString() : null,
+      ...(sub.status === 'active' ? { nextPayment: new Date(sub.current_period_end * 1000).toLocaleDateString() } : {}),
     };
   }));
-  const totalMrr = results.reduce((s, r) => s + r.mrrEquivalent, 0);
-  return { subscriptions: results, totalMrr, arr: totalMrr * 12, count: results.length };
+  const activeSubs = results.filter(r => r.status === 'active' || r.status === 'trialing');
+  const totalMrr = activeSubs.reduce((s, r) => s + r.mrrEquivalent, 0);
+  return { subscriptions: results, totalMrr, arr: totalMrr * 12, count: results.length, activeCount: activeSubs.length, statusQueried: resolvedStatus };
 }
 
 async function toolGetYtdRevenue() {
@@ -265,8 +275,18 @@ async function toolGetSalesTax(month) {
 const TOOLS = [
   {
     name: 'get_subscriptions',
-    description: 'Fetch all active Stripe subscriptions. Returns each customer\'s name, plan, charged amount, MRR equivalent, and billing cycle, plus total MRR and ARR.',
-    input_schema: { type: 'object', properties: {}, required: [] },
+    description: 'Fetch Stripe subscriptions by status. Use status="active" (default) for current MRR/ARR. Use status="canceled" for churned customers. Use status="all" for every subscription ever (active + canceled + past_due + trialing). Returns customer name, plan, amount, MRR equivalent, start date, cancel date, and totals.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['active', 'canceled', 'past_due', 'trialing', 'unpaid', 'all'],
+          description: 'Which subscriptions to fetch. Default: active.',
+        },
+      },
+      required: [],
+    },
   },
   {
     name: 'get_ytd_revenue',
@@ -295,7 +315,7 @@ const TOOLS = [
 
 async function executeTool(name, input) {
   switch (name) {
-    case 'get_subscriptions': return await toolGetSubscriptions();
+    case 'get_subscriptions': return await toolGetSubscriptions(input.status);
     case 'get_ytd_revenue':   return await toolGetYtdRevenue();
     case 'get_pnl':           return await toolGetPnL(input.year);
     case 'get_sales_tax':     return await toolGetSalesTax(input.month);
@@ -324,7 +344,7 @@ function buildSystemPrompt(ctx) {
     ``,
     `== LIVE DATA TOOLS ==`,
     `You have four tools that pull LIVE data directly from Stripe and QuickBooks:`,
-    `- get_subscriptions   -- all active subs, MRR, ARR (Stripe)`,
+    `- get_subscriptions(status) -- subs by status: "active" (default, for MRR/ARR), "canceled" (churned), "all" (full historical count). (Stripe)`,
     `- get_ytd_revenue     -- year-to-date paid invoices (Stripe)`,
     `- get_pnl(year)       -- full P&L for any year (QuickBooks, Cash basis)`,
     `- get_sales_tax(YYYY-MM) -- Texas 8.25% liability for any month (Stripe charges)`,
