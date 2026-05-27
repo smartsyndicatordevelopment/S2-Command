@@ -137,30 +137,49 @@ async function fbGet(fbPath, queryParams) {
   }
 }
 
-async function toolGetFbPerformance(datePreset) {
-  const accountId = normalizeFbAccountId(process.env.META_AD_ACCOUNT_ID);
-  if (!accountId) throw new Error('META_AD_ACCOUNT_ID not configured');
-  const preset = datePreset || 'last_30d';
-  const fields = 'spend,impressions,clicks,ctr,cpm,cpc,reach,frequency,actions,cost_per_action_type,action_values,purchase_roas';
-  const data = await fbGet(`/${accountId}/insights`, { fields, date_preset: preset, level: 'account' });
-  const row = data.data?.[0] || {};
-  const leads    = (row.actions || []).find(a => a.action_type === 'lead')?.value || 0;
+function parseFbRow(row) {
+  const leads     = (row.actions || []).find(a => a.action_type === 'lead')?.value || 0;
   const purchases = (row.actions || []).find(a => a.action_type === 'purchase')?.value || 0;
-  const cpl = leads > 0 ? (parseFloat(row.spend || 0) / leads).toFixed(2) : null;
+  const spend     = parseFloat(row.spend || 0);
+  const cpl       = leads > 0 ? spend / parseInt(leads) : null;
   return {
-    datePreset: preset,
-    spend:       parseFloat(row.spend || 0),
-    impressions: parseInt(row.impressions || 0),
-    clicks:      parseInt(row.clicks || 0),
-    ctr:         parseFloat(row.ctr || 0),
-    cpm:         parseFloat(row.cpm || 0),
-    cpc:         parseFloat(row.cpc || 0),
-    reach:       parseInt(row.reach || 0),
-    leads:       parseInt(leads),
-    purchases:   parseInt(purchases),
-    costPerLead: cpl ? parseFloat(cpl) : null,
+    name:         row.campaign_name || row.adset_name || row.ad_name || null,
+    campaignName: row.campaign_name || null,
+    adsetName:    row.adset_name    || null,
+    adName:       row.ad_name       || null,
+    spend,
+    impressions:  parseInt(row.impressions || 0),
+    clicks:       parseInt(row.clicks || 0),
+    ctr:          parseFloat(row.ctr || 0),
+    cpm:          parseFloat(row.cpm || 0),
+    cpc:          parseFloat(row.cpc || 0),
+    reach:        parseInt(row.reach || 0),
+    leads:        parseInt(leads),
+    purchases:    parseInt(purchases),
+    costPerLead:  cpl,
     purchaseRoas: parseFloat(row.purchase_roas?.[0]?.value || 0),
   };
+}
+
+async function toolGetFbPerformance(datePreset, level) {
+  const accountId = normalizeFbAccountId(process.env.META_AD_ACCOUNT_ID);
+  if (!accountId) throw new Error('META_AD_ACCOUNT_ID not configured');
+  const preset       = datePreset || 'last_30d';
+  const insightLevel = ['account', 'campaign', 'adset', 'ad'].includes(level) ? level : 'account';
+  const nameFields   = insightLevel === 'campaign' ? ',campaign_name'
+                     : insightLevel === 'adset'    ? ',campaign_name,adset_name'
+                     : insightLevel === 'ad'       ? ',campaign_name,adset_name,ad_name'
+                     : '';
+  const fields = `spend,impressions,clicks,ctr,cpm,cpc,reach,frequency,actions,cost_per_action_type,action_values,purchase_roas${nameFields}`;
+  const data = await fbGet(`/${accountId}/insights`, { fields, date_preset: preset, level: insightLevel, limit: '50' });
+
+  if (insightLevel === 'account') {
+    return { datePreset: preset, level: insightLevel, ...parseFbRow(data.data?.[0] || {}) };
+  }
+
+  const rows = (data.data || []).map(parseFbRow);
+  const totalSpend = rows.reduce((s, r) => s + r.spend, 0);
+  return { datePreset: preset, level: insightLevel, totalSpend, count: rows.length, breakdown: rows };
 }
 
 async function toolGetFbCampaigns() {
@@ -481,7 +500,7 @@ const TOOLS = [
   },
   {
     name: 'get_fb_performance',
-    description: 'Fetch Facebook Ads account-level performance metrics (spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, ROAS) for a date range. Use for ad spend analysis, ROI questions, and lead generation cost.',
+    description: 'Fetch Facebook Ads performance metrics broken down by account, campaign, ad set, or individual ad. Returns spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, and ROAS. Use level="ad" for ad-level stats, level="adset" for ad set stats, level="campaign" for campaign stats, level="account" (default) for totals.',
     input_schema: {
       type: 'object',
       properties: {
@@ -489,6 +508,11 @@ const TOOLS = [
           type: 'string',
           enum: ['today', 'yesterday', 'this_week', 'last_7d', 'last_14d', 'last_30d', 'this_month', 'last_month', 'last_90d', 'this_year'],
           description: 'Date range preset. Default: last_30d.',
+        },
+        level: {
+          type: 'string',
+          enum: ['account', 'campaign', 'adset', 'ad'],
+          description: 'Breakdown level. "account" = totals only (default). "campaign" = per campaign. "adset" = per ad set. "ad" = per individual ad.',
         },
       },
       required: [],
@@ -522,7 +546,7 @@ async function executeTool(name, input) {
     case 'get_ytd_revenue':   return await toolGetYtdRevenue();
     case 'get_pnl':           return await toolGetPnL(input.year);
     case 'get_sales_tax':     return await toolGetSalesTax(input.month);
-    case 'get_fb_performance': return await toolGetFbPerformance(input.date_preset);
+    case 'get_fb_performance': return await toolGetFbPerformance(input.date_preset, input.level);
     case 'get_fb_campaigns':   return await toolGetFbCampaigns();
     case 'get_ghl_pipeline':   return await toolGetGhlPipeline();
     case 'get_ghl_contacts':   return await toolGetGhlContacts();
@@ -562,7 +586,7 @@ function buildSystemPrompt(ctx) {
     `- get_pnl(year)               -- full P&L for any year (Cash basis)`,
     ``,
     `Facebook Ads (paid acquisition):`,
-    `- get_fb_performance(date_preset) -- spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, ROAS`,
+    `- get_fb_performance(date_preset, level) -- level="account" for totals, "campaign"/"adset"/"ad" for breakdowns. Returns spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, ROAS per row`,
     `- get_fb_campaigns            -- all campaigns with status and budgets`,
     ``,
     `GHL CRM (contacts and pipeline):`,
