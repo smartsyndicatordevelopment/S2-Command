@@ -324,13 +324,45 @@ router.get('/software-subscriptions', async (req, res) => {
 });
 
 const MARKETING_RE = /advertising|marketing|promo|social media|ad spend|ads\b/i;
+const FB_BASE      = 'https://graph.facebook.com/v21.0';
+
+// Pull ad spend directly from Facebook Ads for the given window
+async function getFbSpend(rawDays) {
+  const token     = process.env.META_ACCESS_TOKEN;
+  const accountId = process.env.META_AD_ACCOUNT_ID;
+  if (!token || !accountId) return null;
+  const actId = accountId.startsWith('act_') ? accountId : `act_${accountId}`;
+
+  // Map day windows to FB date presets; fall back to custom date_range for precise windows
+  let dateParam;
+  const days = rawDays === 'all' ? null : parseInt(rawDays, 10);
+  if (!days)            dateParam = { date_preset: 'maximum' };
+  else if (days <= 7)   dateParam = { date_preset: 'last_7d' };
+  else if (days <= 30)  dateParam = { date_preset: 'last_30d' };
+  else if (days <= 90)  dateParam = { date_preset: 'last_90d' };
+  else if (days <= 180) dateParam = { date_preset: 'last_90d' }; // best available preset
+  else                  dateParam = { date_preset: 'maximum' };
+
+  const qs = new URLSearchParams({ fields: 'spend', level: 'account', access_token: token, ...dateParam });
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r    = await fetch(`${FB_BASE}/${actId}/insights?${qs}`);
+      const data = await r.json();
+      if (data.error) return null;
+      const spend = parseFloat(data.data?.[0]?.spend || 0);
+      return isNaN(spend) ? null : spend;
+    } catch {
+      if (i === 2) return null;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+  return null;
+}
 
 router.get('/marketing-spend', async (req, res) => {
-  if (!qbConfigured()) return res.json({ spend: 0, spend3m: 0, marketingAccounts: [], notConfigured: true });
-
-  const now = new Date();
-  const end = now.toISOString().split('T')[0];
   const rawDays = req.query.days;
+  const now     = new Date();
+  const end     = now.toISOString().split('T')[0];
   let start;
   if (!rawDays || rawDays === 'all') {
     start = '2020-01-01';
@@ -341,18 +373,38 @@ router.get('/marketing-spend', async (req, res) => {
     start = d.toISOString().split('T')[0];
   }
 
-  try {
-    const data = await withRetry(() =>
-      qbGet(`/reports/ProfitAndLoss?start_date=${start}&end_date=${end}&accounting_method=Cash`)
-    );
-    const { expenseLines } = parsePnL(data);
-    const marketingLines = expenseLines.filter(l => MARKETING_RE.test(l.name));
-    const spend = marketingLines.reduce((s, l) => s + l.amount, 0);
-    res.json({ spend, spend3m: spend, marketingAccounts: marketingLines.map(l => l.name), startDate: start, endDate: end });
-  } catch (err) {
-    console.error('QB /marketing-spend error:', err.message);
-    res.status(500).json({ error: err.message });
+  // Try Facebook Ads first -- direct spend data is more reliable than QB keyword matching
+  const fbSpend = await getFbSpend(rawDays);
+
+  // Also try QuickBooks if connected
+  let qbSpend = 0;
+  let marketingAccounts = [];
+  if (qbConfigured()) {
+    try {
+      const data = await withRetry(() =>
+        qbGet(`/reports/ProfitAndLoss?start_date=${start}&end_date=${end}&accounting_method=Cash`)
+      );
+      const { expenseLines } = parsePnL(data);
+      const marketingLines = expenseLines.filter(l => MARKETING_RE.test(l.name));
+      qbSpend = marketingLines.reduce((s, l) => s + l.amount, 0);
+      marketingAccounts = marketingLines.map(l => l.name);
+    } catch (err) {
+      console.error('QB /marketing-spend error:', err.message);
+    }
   }
+
+  // Combine: use FB spend if available (it's more precise); supplement with any QB-only channels
+  const fbSource = fbSpend !== null;
+  const totalSpend = fbSource ? fbSpend + qbSpend : qbSpend;
+  const sources = [];
+  if (fbSource) sources.push(`Meta Ads ($${fbSpend.toFixed(2)})`);
+  if (marketingAccounts.length) sources.push(...marketingAccounts);
+
+  if (totalSpend === 0 && !fbSource && !qbConfigured()) {
+    return res.json({ spend: 0, marketingAccounts: [], notConfigured: true, startDate: start, endDate: end });
+  }
+
+  res.json({ spend: totalSpend, marketingAccounts: sources, startDate: start, endDate: end });
 });
 
 router.get('/qb/status', (req, res) => {
