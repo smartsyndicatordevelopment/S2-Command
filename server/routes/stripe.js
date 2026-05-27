@@ -185,17 +185,16 @@ async function computeSubscriptions() {
     const newCustomersLast3Months = [...trueActive, ...allPaused, ...allCanceled]
       .filter(s => {
         const price = s.items?.data?.[0]?.price;
-        const key = `${price?.unit_amount}|${price?.recurring?.interval}`;
-        return (key in PLAN_NAME_MAP) && s.created >= threeMonthsAgo;
+        return !!price?.recurring?.interval && s.created >= threeMonthsAgo;
       }).length;
 
     // Windowed stats for dynamic LTV / CAC window selector on the Customers page
-    // Only subscription products (price keys in PLAN_NAME_MAP) count for CAC and signup chart.
+    // Count all recurring subscriptions -- not just exact plan price matches -- so
+    // customers on custom pricing, promos, or updated prices are included correctly.
     const allSubsEver = [...trueActive, ...allPaused, ...allCanceled];
     const isSubProduct = (sub) => {
       const price = sub.items?.data?.[0]?.price;
-      const key = `${price?.unit_amount}|${price?.recurring?.interval}`;
-      return key in PLAN_NAME_MAP;
+      return !!price?.recurring?.interval;
     };
     const subProductsEver = allSubsEver.filter(isSubProduct);
     const subCustId = s => (typeof s.customer === 'string' ? s.customer : s.customer?.id);
@@ -302,6 +301,17 @@ async function computeRevenue() {
 }
 
 // ─── Cache-first route handlers ───────────────────────────────────────────────
+
+router.get('/subscriptions/refresh', async (req, res) => {
+  try {
+    const data = await computeSubscriptions();
+    await metricsCache.set('stripe:subscriptions', data);
+    res.json({ ok: true, newCustomers90d: data.windowedStats?.[90]?.newCustomers });
+  } catch (err) {
+    console.error('Stripe /subscriptions/refresh error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.get('/subscriptions', async (req, res) => {
   try {
