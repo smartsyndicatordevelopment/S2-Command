@@ -58,32 +58,40 @@ export default function SimpleMarkdown({ content, className = '' }) {
     return isTableRow(line) && /^\|[\s|:-]+\|$/.test(line.trim());
   }
 
+  // Detect if a cell value looks numeric (dollar, percent, number, ratio)
+  function isNumericCell(val) {
+    return /^[\$\-]?[\d,]+(\.\d+)?[x%]?$/.test(val.trim()) || /^\d+(\.\d+)?x$/.test(val.trim());
+  }
+
   function renderTable(rows, key) {
     if (rows.length === 0) return null;
     const headers  = parseTableRow(rows[0]);
     const dataRows = rows.slice(1).filter(r => !isSeparatorRow(r));
 
+    // Determine alignment per column based on first data row
+    const firstData = dataRows.length > 0 ? parseTableRow(dataRows[0]) : [];
+    const isNumCol  = headers.map((_, ci) => isNumericCell(firstData[ci] || ''));
+
     return (
-      <div key={key} style={{ overflowX: 'auto', margin: '8px 0' }}>
+      <div key={key} style={{ overflowX: 'auto', margin: '10px 0' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
           <thead>
-            <tr>
+            <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
               {headers.map((h, i) => (
                 <th
                   key={i}
                   style={{
-                    padding: '6px 10px',
-                    textAlign: 'left',
-                    fontWeight: 600,
+                    padding: '5px 12px 7px',
+                    textAlign: isNumCol[i] ? 'right' : 'left',
+                    fontWeight: 500,
                     fontSize: '10px',
-                    letterSpacing: '0.06em',
+                    letterSpacing: '0.07em',
                     textTransform: 'uppercase',
                     color: 'var(--c-muted)',
-                    borderBottom: '1px solid var(--c-border)',
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {renderInline(h)}
+                  {h}
                 </th>
               ))}
             </tr>
@@ -91,18 +99,20 @@ export default function SimpleMarkdown({ content, className = '' }) {
           <tbody>
             {dataRows.map((row, ri) => {
               const cells = parseTableRow(row);
+              const isLast = ri === dataRows.length - 1;
               return (
-                <tr
-                  key={ri}
-                  style={{ backgroundColor: ri % 2 === 0 ? 'transparent' : 'var(--c-subtle-5)' }}
-                >
+                <tr key={ri}>
                   {cells.map((cell, ci) => (
                     <td
                       key={ci}
                       style={{
-                        padding: '6px 10px',
-                        color: 'var(--c-text-primary)',
-                        borderBottom: '1px solid var(--c-border)',
+                        padding: '7px 12px',
+                        textAlign: isNumCol[ci] ? 'right' : 'left',
+                        color: ci === 0 ? 'var(--c-text-primary)' : 'var(--c-dim)',
+                        fontWeight: ci === 0 ? 500 : 400,
+                        fontFamily: isNumCol[ci] ? 'monospace' : 'inherit',
+                        fontSize: isNumCol[ci] ? '11px' : '12px',
+                        borderBottom: isLast ? 'none' : '1px solid var(--c-border)',
                         whiteSpace: 'nowrap',
                       }}
                     >
