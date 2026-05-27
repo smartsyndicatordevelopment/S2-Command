@@ -113,6 +113,174 @@ function parsePnL(data) {
   return { totalIncome, totalExpenses, netIncome, expenseLines };
 }
 
+// -- Facebook Ads helpers --
+
+function normalizeFbAccountId(id) {
+  if (!id) return null;
+  return id.startsWith('act_') ? id : `act_${id}`;
+}
+
+async function fbGet(fbPath, queryParams) {
+  const token = process.env.META_ACCESS_TOKEN;
+  if (!token) throw new Error('META_ACCESS_TOKEN not configured');
+  const qs = new URLSearchParams({ access_token: token, ...queryParams });
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r    = await fetch(`https://graph.facebook.com/v21.0${fbPath}?${qs}`);
+      const data = await r.json();
+      if (data.error) throw new Error(data.error.message);
+      return data;
+    } catch (err) {
+      if (i === 2) throw err;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+}
+
+async function toolGetFbPerformance(datePreset) {
+  const accountId = normalizeFbAccountId(process.env.META_AD_ACCOUNT_ID);
+  if (!accountId) throw new Error('META_AD_ACCOUNT_ID not configured');
+  const preset = datePreset || 'last_30d';
+  const fields = 'spend,impressions,clicks,ctr,cpm,cpc,reach,frequency,actions,cost_per_action_type,action_values,purchase_roas';
+  const data = await fbGet(`/${accountId}/insights`, { fields, date_preset: preset, level: 'account' });
+  const row = data.data?.[0] || {};
+  const leads    = (row.actions || []).find(a => a.action_type === 'lead')?.value || 0;
+  const purchases = (row.actions || []).find(a => a.action_type === 'purchase')?.value || 0;
+  const cpl = leads > 0 ? (parseFloat(row.spend || 0) / leads).toFixed(2) : null;
+  return {
+    datePreset: preset,
+    spend:       parseFloat(row.spend || 0),
+    impressions: parseInt(row.impressions || 0),
+    clicks:      parseInt(row.clicks || 0),
+    ctr:         parseFloat(row.ctr || 0),
+    cpm:         parseFloat(row.cpm || 0),
+    cpc:         parseFloat(row.cpc || 0),
+    reach:       parseInt(row.reach || 0),
+    leads:       parseInt(leads),
+    purchases:   parseInt(purchases),
+    costPerLead: cpl ? parseFloat(cpl) : null,
+    purchaseRoas: parseFloat(row.purchase_roas?.[0]?.value || 0),
+  };
+}
+
+async function toolGetFbCampaigns() {
+  const accountId = normalizeFbAccountId(process.env.META_AD_ACCOUNT_ID);
+  if (!accountId) throw new Error('META_AD_ACCOUNT_ID not configured');
+  const fields = 'id,name,status,objective,daily_budget,lifetime_budget,start_time,stop_time';
+  const data = await fbGet(`/${accountId}/campaigns`, { fields, limit: '50' });
+  const campaigns = (data.data || []).map(c => ({
+    name:          c.name,
+    status:        c.status,
+    objective:     c.objective,
+    dailyBudget:   c.daily_budget  ? parseFloat(c.daily_budget)  / 100 : null,
+    lifetimeBudget: c.lifetime_budget ? parseFloat(c.lifetime_budget) / 100 : null,
+    startDate:     c.start_time || null,
+    endDate:       c.stop_time  || null,
+  }));
+  const active  = campaigns.filter(c => c.status === 'ACTIVE').length;
+  const paused  = campaigns.filter(c => c.status === 'PAUSED').length;
+  return { campaigns, total: campaigns.length, active, paused };
+}
+
+// -- GHL helpers --
+
+async function ghlGet(endpoint, queryParams) {
+  const apiKey     = process.env.GHL_API_KEY;
+  const locationId = process.env.GHL_LOCATION_ID;
+  if (!apiKey) throw new Error('GHL_API_KEY not configured');
+  const qs = new URLSearchParams(Object.fromEntries(
+    Object.entries({ locationId, ...queryParams }).filter(([, v]) => v != null && v !== '')
+  ));
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r    = await fetch(`https://services.leadconnectorhq.com${endpoint}?${qs}`, {
+        headers: { Authorization: `Bearer ${apiKey}`, Version: '2021-07-28', Accept: 'application/json' },
+      });
+      if (!r.ok && r.status !== 200) throw new Error(`GHL API ${r.status} for ${endpoint}`);
+      return r.json();
+    } catch (err) {
+      if (i === 2) throw err;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+}
+
+async function toolGetGhlPipeline() {
+  const data = await ghlGet('/opportunities/search', { limit: '100' });
+  const opps = data.opportunities || [];
+  const byStage = {};
+  let totalValue = 0;
+  for (const opp of opps) {
+    const stage = opp.pipelineStageId || 'Unknown';
+    const stageName = opp.pipelineStageName || opp.pipelineStageId || 'Unknown';
+    if (!byStage[stage]) byStage[stage] = { name: stageName, count: 0, value: 0 };
+    byStage[stage].count++;
+    byStage[stage].value += parseFloat(opp.monetaryValue || 0);
+    totalValue += parseFloat(opp.monetaryValue || 0);
+  }
+  return {
+    totalOpportunities: opps.length,
+    totalPipelineValue: totalValue,
+    byStage: Object.values(byStage).sort((a, b) => b.count - a.count),
+  };
+}
+
+async function toolGetGhlContacts() {
+  const now       = new Date();
+  const thirtyAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const [allData, recentData] = await Promise.all([
+    ghlGet('/contacts/', { limit: '1' }),
+    ghlGet('/contacts/', { startAfterDate: thirtyAgo, limit: '1' }),
+  ]);
+  return {
+    totalContacts:    allData.meta?.total   || allData.total   || null,
+    recentContacts30d: recentData.meta?.total || recentData.total || null,
+  };
+}
+
+// -- Make.com helpers --
+
+async function makeGet(endpoint, queryParams) {
+  const apiKey = process.env.MAKE_API_KEY;
+  const zone   = (process.env.MAKE_ZONE || 'us1').toLowerCase();
+  if (!apiKey) throw new Error('MAKE_API_KEY not configured');
+  const qs = new URLSearchParams(Object.fromEntries(
+    Object.entries(queryParams || {}).filter(([, v]) => v != null && v !== '')
+  ));
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r    = await fetch(`https://${zone}.make.com/api/v2${endpoint}${qs.toString() ? '?' + qs : ''}`, {
+        headers: { Authorization: `Token ${apiKey}`, 'Content-Type': 'application/json' },
+      });
+      const data = await r.json();
+      return data;
+    } catch (err) {
+      if (i === 2) throw err;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+}
+
+async function toolGetMakeOverview() {
+  const teamId = process.env.MAKE_TEAM_ID;
+  const params = teamId ? { teamId } : {};
+  const data = await makeGet('/scenarios', params);
+  const scenarios = data.scenarios || data || [];
+  const active   = scenarios.filter(s => s.isEnabled).length;
+  const inactive = scenarios.filter(s => !s.isEnabled).length;
+  return {
+    totalScenarios: scenarios.length,
+    active,
+    inactive,
+    scenarios: scenarios.slice(0, 20).map(s => ({
+      name:          s.name,
+      active:        s.isEnabled,
+      lastRun:       s.lastEdit  || null,
+      nextExecution: s.scheduling?.nextExecution || null,
+    })),
+  };
+}
+
 // -- Sales tax helpers --
 
 const TX_ZIP_PREFIXES = ['75', '76', '77', '78', '79'];
@@ -311,6 +479,41 @@ const TOOLS = [
       required: ['month'],
     },
   },
+  {
+    name: 'get_fb_performance',
+    description: 'Fetch Facebook Ads account-level performance metrics (spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, ROAS) for a date range. Use for ad spend analysis, ROI questions, and lead generation cost.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        date_preset: {
+          type: 'string',
+          enum: ['today', 'yesterday', 'this_week', 'last_7d', 'last_14d', 'last_30d', 'this_month', 'last_month', 'last_90d', 'this_year'],
+          description: 'Date range preset. Default: last_30d.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_fb_campaigns',
+    description: 'List all Facebook ad campaigns with their status (active/paused), objective, and budget. Use to see what campaigns exist and their current state.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'get_ghl_pipeline',
+    description: 'Fetch GHL CRM pipeline data: total opportunities, pipeline value in dollars, and breakdown by stage. Use for sales pipeline, lead funnel, and deal value questions.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'get_ghl_contacts',
+    description: 'Fetch GHL CRM contact counts: total contacts in the database and how many were added in the last 30 days. Use for lead generation volume and contact growth questions.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'get_make_overview',
+    description: 'Fetch Make.com automation workspace overview: total scenarios, how many are active vs inactive, and scenario names with last-run times. Use for automation health and workflow questions.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
 ];
 
 async function executeTool(name, input) {
@@ -319,6 +522,11 @@ async function executeTool(name, input) {
     case 'get_ytd_revenue':   return await toolGetYtdRevenue();
     case 'get_pnl':           return await toolGetPnL(input.year);
     case 'get_sales_tax':     return await toolGetSalesTax(input.month);
+    case 'get_fb_performance': return await toolGetFbPerformance(input.date_preset);
+    case 'get_fb_campaigns':   return await toolGetFbCampaigns();
+    case 'get_ghl_pipeline':   return await toolGetGhlPipeline();
+    case 'get_ghl_contacts':   return await toolGetGhlContacts();
+    case 'get_make_overview':  return await toolGetMakeOverview();
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }
@@ -343,11 +551,26 @@ function buildSystemPrompt(ctx) {
     `YTD Revenue:    ${d((ctx.ytdRevenue || 0) / 100)}`,
     ``,
     `== LIVE DATA TOOLS ==`,
-    `You have four tools that pull LIVE data directly from Stripe and QuickBooks:`,
-    `- get_subscriptions(status) -- subs by status: "active" (default, for MRR/ARR), "canceled" (churned), "all" (full historical count). (Stripe)`,
-    `- get_ytd_revenue     -- year-to-date paid invoices (Stripe)`,
-    `- get_pnl(year)       -- full P&L for any year (QuickBooks, Cash basis)`,
-    `- get_sales_tax(YYYY-MM) -- Texas 8.25% liability for any month (Stripe charges)`,
+    `You have tools that pull LIVE data from all connected systems. Always call the relevant tool before answering any numbers question.`,
+    ``,
+    `Stripe (billing):`,
+    `- get_subscriptions(status)   -- subs by status: "active" (MRR/ARR), "canceled" (churn), "all" (full history)`,
+    `- get_ytd_revenue             -- year-to-date paid invoices`,
+    `- get_sales_tax(YYYY-MM)      -- Texas 8.25% liability for any month`,
+    ``,
+    `QuickBooks (accounting):`,
+    `- get_pnl(year)               -- full P&L for any year (Cash basis)`,
+    ``,
+    `Facebook Ads (paid acquisition):`,
+    `- get_fb_performance(date_preset) -- spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, ROAS`,
+    `- get_fb_campaigns            -- all campaigns with status and budgets`,
+    ``,
+    `GHL CRM (contacts and pipeline):`,
+    `- get_ghl_pipeline            -- opportunity count, pipeline value, breakdown by stage`,
+    `- get_ghl_contacts            -- total contacts and 30-day new contact count`,
+    ``,
+    `Make.com (automations):`,
+    `- get_make_overview           -- scenario count, active vs inactive, last-run times`,
     ``,
     `RULE: For any question requiring accurate numbers, call the appropriate tool first. Do not guess from the snapshot above.`,
     ``,
