@@ -1,20 +1,29 @@
-// Renders a small subset of markdown: headers, bullets, bold, italic, hr, line breaks
+// Renders a subset of markdown: headers, bullets, numbered lists, bold, italic, hr, tables, line breaks
 // No external dependency -- written to match the app's CSS variable theme
 
 export default function SimpleMarkdown({ content, className = '' }) {
   if (!content) return null;
 
   function renderInline(text) {
-    // Split on **bold** and *italic* patterns
     const parts = [];
     let remaining = text;
     let key = 0;
 
     while (remaining.length > 0) {
-      const boldIdx  = remaining.indexOf('**');
+      const boldIdx   = remaining.indexOf('**');
       const italicIdx = remaining.indexOf('*');
+      const codeIdx   = remaining.indexOf('`');
 
-      if (boldIdx !== -1 && remaining.indexOf('**', boldIdx + 2) !== -1) {
+      if (codeIdx !== -1 && remaining.indexOf('`', codeIdx + 1) !== -1) {
+        const end = remaining.indexOf('`', codeIdx + 1);
+        if (codeIdx > 0) parts.push(<span key={key++}>{remaining.slice(0, codeIdx)}</span>);
+        parts.push(
+          <code key={key++} style={{ fontSize: '11px', fontFamily: 'monospace', backgroundColor: 'var(--c-subtle-5)', padding: '1px 5px', borderRadius: '3px', color: 'var(--c-text-primary)' }}>
+            {remaining.slice(codeIdx + 1, end)}
+          </code>
+        );
+        remaining = remaining.slice(end + 1);
+      } else if (boldIdx !== -1 && remaining.indexOf('**', boldIdx + 2) !== -1) {
         const end = remaining.indexOf('**', boldIdx + 2);
         if (boldIdx > 0) parts.push(<span key={key++}>{remaining.slice(0, boldIdx)}</span>);
         parts.push(<strong key={key++} style={{ fontWeight: 600, color: 'var(--c-text-primary)' }}>{remaining.slice(boldIdx + 2, end)}</strong>);
@@ -32,54 +41,146 @@ export default function SimpleMarkdown({ content, className = '' }) {
     return parts;
   }
 
-  const lines = content.split('\n');
+  // Parse pipe-delimited table cells from a line
+  function parseTableRow(line) {
+    return line
+      .replace(/^\|/, '')
+      .replace(/\|$/, '')
+      .split('|')
+      .map(cell => cell.trim());
+  }
+
+  function isTableRow(line) {
+    return line.trim().startsWith('|') && line.trim().endsWith('|');
+  }
+
+  function isSeparatorRow(line) {
+    return isTableRow(line) && /^\|[\s|:-]+\|$/.test(line.trim());
+  }
+
+  function renderTable(rows, key) {
+    if (rows.length === 0) return null;
+    const headers  = parseTableRow(rows[0]);
+    const dataRows = rows.slice(1).filter(r => !isSeparatorRow(r));
+
+    return (
+      <div key={key} style={{ overflowX: 'auto', margin: '8px 0' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+          <thead>
+            <tr>
+              {headers.map((h, i) => (
+                <th
+                  key={i}
+                  style={{
+                    padding: '6px 10px',
+                    textAlign: 'left',
+                    fontWeight: 600,
+                    fontSize: '10px',
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    color: 'var(--c-muted)',
+                    borderBottom: '1px solid var(--c-border)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {renderInline(h)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {dataRows.map((row, ri) => {
+              const cells = parseTableRow(row);
+              return (
+                <tr
+                  key={ri}
+                  style={{ backgroundColor: ri % 2 === 0 ? 'transparent' : 'var(--c-subtle-5)' }}
+                >
+                  {cells.map((cell, ci) => (
+                    <td
+                      key={ci}
+                      style={{
+                        padding: '6px 10px',
+                        color: 'var(--c-text-primary)',
+                        borderBottom: '1px solid var(--c-border)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {renderInline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  const lines  = content.split('\n');
   const output = [];
-  let bullets = [];
-  let numbered = [];
+  let bullets    = [];
+  let numbered   = [];
+  let tableRows  = [];
   let k = 0;
 
   function flushBullets() {
-    if (bullets.length) {
-      output.push(
-        <ul key={k++} style={{ margin: '4px 0 8px', paddingLeft: 0, listStyle: 'none' }}>
-          {bullets.map((b, i) => (
-            <li key={i} style={{ display: 'flex', gap: '8px', marginBottom: '4px', lineHeight: '1.65', fontSize: '13px', color: 'var(--c-text-primary)' }}>
-              <span style={{ color: 'var(--c-muted)', flexShrink: 0, marginTop: '1px' }}>•</span>
-              <span>{renderInline(b)}</span>
-            </li>
-          ))}
-        </ul>
-      );
-      bullets = [];
-    }
+    if (!bullets.length) return;
+    output.push(
+      <ul key={k++} style={{ margin: '4px 0 8px', paddingLeft: 0, listStyle: 'none' }}>
+        {bullets.map((b, i) => (
+          <li key={i} style={{ display: 'flex', gap: '8px', marginBottom: '4px', lineHeight: '1.65', fontSize: '13px', color: 'var(--c-text-primary)' }}>
+            <span style={{ color: 'var(--c-muted)', flexShrink: 0, marginTop: '1px' }}>•</span>
+            <span>{renderInline(b)}</span>
+          </li>
+        ))}
+      </ul>
+    );
+    bullets = [];
   }
 
   function flushNumbered() {
-    if (numbered.length) {
-      output.push(
-        <ol key={k++} style={{ margin: '4px 0 8px', paddingLeft: 0, listStyle: 'none' }}>
-          {numbered.map((n, i) => (
-            <li key={i} style={{ display: 'flex', gap: '8px', marginBottom: '4px', lineHeight: '1.65', fontSize: '13px', color: 'var(--c-text-primary)' }}>
-              <span style={{ color: '#5c3ff4', flexShrink: 0, fontVariantNumeric: 'tabular-nums', minWidth: '16px', fontWeight: 600 }}>{i + 1}.</span>
-              <span>{renderInline(n)}</span>
-            </li>
-          ))}
-        </ol>
-      );
-      numbered = [];
-    }
+    if (!numbered.length) return;
+    output.push(
+      <ol key={k++} style={{ margin: '4px 0 8px', paddingLeft: 0, listStyle: 'none' }}>
+        {numbered.map((n, i) => (
+          <li key={i} style={{ display: 'flex', gap: '8px', marginBottom: '4px', lineHeight: '1.65', fontSize: '13px', color: 'var(--c-text-primary)' }}>
+            <span style={{ color: '#5c3ff4', flexShrink: 0, fontVariantNumeric: 'tabular-nums', minWidth: '16px', fontWeight: 600 }}>{i + 1}.</span>
+            <span>{renderInline(n)}</span>
+          </li>
+        ))}
+      </ol>
+    );
+    numbered = [];
   }
 
-  function flush() { flushBullets(); flushNumbered(); }
+  function flushTable() {
+    if (!tableRows.length) return;
+    output.push(renderTable(tableRows, k++));
+    tableRows = [];
+  }
+
+  function flush() { flushBullets(); flushNumbered(); flushTable(); }
 
   for (const line of lines) {
-    const h1 = line.match(/^# (.+)/);
-    const h2 = line.match(/^## (.+)/);
-    const h3 = line.match(/^### (.+)/);
+    // Table rows -- buffer until a non-table line breaks the block
+    if (isTableRow(line)) {
+      flushBullets();
+      flushNumbered();
+      tableRows.push(line);
+      continue;
+    } else {
+      flushTable();
+    }
+
+    const h1     = line.match(/^# (.+)/);
+    const h2     = line.match(/^## (.+)/);
+    const h3     = line.match(/^### (.+)/);
     const bullet = line.match(/^[-*] (.+)/);
-    const num = line.match(/^\d+\. (.+)/);
-    const hr = line.match(/^-{3,}$/) || line.match(/^\*{3,}$/);
-    const empty = line.trim() === '';
+    const num    = line.match(/^\d+\. (.+)/);
+    const hr     = line.match(/^-{3,}$/) || line.match(/^\*{3,}$/);
+    const empty  = line.trim() === '';
 
     if (h1) {
       flush();
@@ -92,9 +193,11 @@ export default function SimpleMarkdown({ content, className = '' }) {
       output.push(<p key={k++} style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--c-muted)', margin: '10px 0 4px' }}>{renderInline(h3[1])}</p>);
     } else if (bullet) {
       flushNumbered();
+      flushTable();
       bullets.push(bullet[1]);
     } else if (num) {
       flushBullets();
+      flushTable();
       numbered.push(num[1]);
     } else if (hr) {
       flush();
