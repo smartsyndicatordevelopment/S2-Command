@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, Plus, Send, Trash2, Bot, User, Loader } from 'lucide-react';
+import SimpleMarkdown from './SimpleMarkdown';
+import { ApprovalCard } from './AgentChat';
 
 const STORAGE_KEY = 's2-command-chats';
 const MAX_CHATS   = 30;
@@ -93,6 +95,8 @@ export default function BusinessChat({ context, style = {} }) {
   const [activeChatId, setActiveChatId] = useState(() => loadChats()[0]?.id || null);
   const [input, setInput]           = useState('');
   const [sending, setSending]       = useState(false);
+  const [approving, setApproving]   = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
   const [error, setError]           = useState(null);
   const bottomRef  = useRef(null);
   const inputRef   = useRef(null);
@@ -174,12 +178,19 @@ export default function BusinessChat({ context, style = {} }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      const assistantMsg = { role: 'assistant', content: data.reply };
-      const withReply = withUser.map(c => {
-        if (c.id !== chatId) return c;
-        return { ...c, messages: [...c.messages, assistantMsg] };
-      });
-      updateChats(withReply);
+      if (data.type === 'pending_action') {
+        // Show approval card -- don't add to chat history yet
+        if (data.message) {
+          const previewMsg = { role: 'assistant', content: data.message };
+          const withPreview = withUser.map(c => c.id !== chatId ? c : { ...c, messages: [...c.messages, previewMsg] });
+          updateChats(withPreview);
+        }
+        setPendingAction({ ...data, _chatId: chatId });
+      } else {
+        const assistantMsg = { role: 'assistant', content: data.reply };
+        const withReply = withUser.map(c => c.id !== chatId ? c : { ...c, messages: [...c.messages, assistantMsg] });
+        updateChats(withReply);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -187,6 +198,41 @@ export default function BusinessChat({ context, style = {} }) {
       setTimeout(() => textareaRef.current?.focus(), 50);
     }
   }, [input, sending, activeChatId, chats, context, updateChats]);
+
+  const approvePending = useCallback(async () => {
+    if (!pendingAction) return;
+    setApproving(true);
+    try {
+      const res  = await fetch('/api/chat/execute', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: pendingAction.action }),
+      });
+      const data = await res.json();
+      const msg  = { role: 'assistant', content: data.reply || data.error || 'Done.' };
+      const chatId = pendingAction._chatId || activeChatId;
+      setChats(prev => {
+        const updated = prev.map(c => c.id !== chatId ? c : { ...c, messages: [...c.messages, msg] });
+        persistChats(updated);
+        return updated;
+      });
+    } catch {
+      /* ignore */
+    }
+    setPendingAction(null);
+    setApproving(false);
+  }, [pendingAction, activeChatId]);
+
+  const cancelPending = useCallback(() => {
+    const msg = { role: 'assistant', content: 'Understood -- action cancelled.' };
+    const chatId = pendingAction?._chatId || activeChatId;
+    setChats(prev => {
+      const updated = prev.map(c => c.id !== chatId ? c : { ...c, messages: [...c.messages, msg] });
+      persistChats(updated);
+      return updated;
+    });
+    setPendingAction(null);
+  }, [pendingAction, activeChatId]);
 
   const handleKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -290,14 +336,16 @@ export default function BusinessChat({ context, style = {} }) {
                   : <Bot  size={11} style={{ color: 'var(--c-dim)' }} />}
               </div>
               <div
-                className="max-w-[80%] px-3 py-2 rounded-lg text-xs leading-relaxed"
+                className="max-w-[85%] px-3 py-2 rounded-lg text-xs leading-relaxed"
                 style={
                   msg.role === 'user'
-                    ? { backgroundColor: 'rgba(92,63,244,0.15)', color: 'var(--c-text-primary)' }
+                    ? { backgroundColor: 'rgba(92,63,244,0.15)', color: 'var(--c-text-primary)', whiteSpace: 'pre-wrap' }
                     : { backgroundColor: 'var(--c-msg-ai-bg)', color: 'var(--c-msg-ai-text)', border: '0.5px solid var(--c-border)' }
                 }
               >
-                {renderContent(msg.content)}
+                {msg.role === 'user'
+                  ? msg.content
+                  : <SimpleMarkdown content={msg.content} />}
               </div>
             </div>
           ))}
@@ -321,6 +369,18 @@ export default function BusinessChat({ context, style = {} }) {
           <div ref={bottomRef} />
         </div>
 
+        {/* Approval card */}
+        {pendingAction && (
+          <div className="flex-shrink-0 px-4 pb-2">
+            <ApprovalCard
+              pending={pendingAction}
+              onApprove={approvePending}
+              onCancel={cancelPending}
+              loading={approving}
+            />
+          </div>
+        )}
+
         {/* Input */}
         <div className="flex-shrink-0 px-4 pb-4 pt-2">
           <div className="flex items-end gap-2 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--c-border)', backgroundColor: 'var(--c-subtle)' }}>
@@ -329,17 +389,17 @@ export default function BusinessChat({ context, style = {} }) {
               value={input}
               onChange={handleInput}
               onKeyDown={handleKey}
-              placeholder="Ask about MRR, clients, revenue, churn..."
+              placeholder={pendingAction ? 'Approve or cancel the action above first' : 'Ask about MRR, clients, revenue, churn...'}
               rows={1}
-              disabled={sending}
+              disabled={sending || !!pendingAction}
               className="flex-1 bg-transparent text-xs resize-none outline-none leading-relaxed"
               style={{ color: 'var(--c-text-primary)', minHeight: '20px', maxHeight: '120px', caretColor: '#5c3ff4' }}
             />
             <button
               onClick={send}
-              disabled={sending || !input.trim()}
+              disabled={sending || !!pendingAction || !input.trim()}
               className="flex-shrink-0 w-7 h-7 rounded flex items-center justify-center transition-colors disabled:opacity-30"
-              style={{ backgroundColor: input.trim() && !sending ? '#5c3ff4' : 'transparent' }}
+              style={{ backgroundColor: input.trim() && !sending && !pendingAction ? '#5c3ff4' : 'transparent' }}
             >
               <Send size={12} style={{ color: input.trim() && !sending ? '#fff' : '#6b7280' }} />
             </button>

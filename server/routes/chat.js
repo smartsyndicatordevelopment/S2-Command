@@ -538,6 +538,20 @@ const TOOLS = [
     description: 'Fetch Make.com automation workspace overview: total scenarios, how many are active vs inactive, and scenario names with last-run times. Use for automation health and workflow questions.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
+  {
+    name: 'toggle_fb_campaign',
+    description: 'Pause or activate a Facebook ad campaign. Requires user approval before executing -- do not call this without confirming intent. Use get_fb_campaigns first to find the campaign ID.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        campaign_id:         { type: 'string', description: 'The Facebook campaign ID (numeric string).' },
+        status:              { type: 'string', enum: ['ACTIVE', 'PAUSED'], description: 'The new status to set.' },
+        campaign_name:       { type: 'string', description: 'Human-readable campaign name for the confirmation message.' },
+        preview_description: { type: 'string', description: 'Plain-English summary shown to Brandon for approval, e.g. "Pause campaign: S2 SLO - Sales".' },
+      },
+      required: ['campaign_id', 'status', 'preview_description'],
+    },
+  },
 ];
 
 async function executeTool(name, input) {
@@ -588,6 +602,7 @@ function buildSystemPrompt(ctx) {
     `Facebook Ads (paid acquisition):`,
     `- get_fb_performance(date_preset, level) -- level="account" for totals, "campaign"/"adset"/"ad" for breakdowns. Returns spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, ROAS per row`,
     `- get_fb_campaigns            -- all campaigns with status and budgets`,
+    `- toggle_fb_campaign(campaign_id, status, preview_description) -- pause or activate a campaign. ALWAYS call get_fb_campaigns first to get the id. Returns a pending approval -- do not assume it executed.`,
     ``,
     `GHL CRM (contacts and pipeline):`,
     `- get_ghl_pipeline            -- opportunity count, pipeline value, breakdown by stage`,
@@ -661,6 +676,19 @@ router.post('/chat', async (req, res) => {
         }
 
         if (response.stop_reason === 'tool_use') {
+          // Intercept write tools -- return pending_action for client-side approval
+          const writeBlock = response.content.find(b => b.type === 'tool_use' && b.name === 'toggle_fb_campaign');
+          if (writeBlock) {
+            const claudeText = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
+            const { campaign_id, status, preview_description } = writeBlock.input;
+            return res.json({
+              type:    'pending_action',
+              message: claudeText,
+              preview: preview_description,
+              action:  { type: 'toggle_fb_campaign', campaign_id, status },
+            });
+          }
+
           const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
           const toolResults = await Promise.all(
             toolUseBlocks.map(async (block) => {
@@ -702,6 +730,38 @@ router.post('/chat', async (req, res) => {
       await new Promise(r => setTimeout(r, 1000 * (3 - attempts)));
     }
   }
+});
+
+// POST /api/chat/execute -- run an approved action from the analyst
+router.post('/chat/execute', async (req, res) => {
+  const { action } = req.body;
+  if (!action?.type) return res.status(400).json({ error: 'action.type required' });
+
+  if (action.type === 'toggle_fb_campaign') {
+    const { campaign_id, status } = action;
+    if (!campaign_id || !status) return res.status(400).json({ error: 'campaign_id and status required' });
+    const token = process.env.META_ACCESS_TOKEN;
+    if (!token) return res.status(400).json({ error: 'META_ACCESS_TOKEN not configured' });
+
+    for (let i = 0; i < 3; i++) {
+      try {
+        const r    = await fetch(`https://graph.facebook.com/v21.0/${campaign_id}`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ status, access_token: token }),
+        });
+        const data = await r.json();
+        if (data.error) return res.status(400).json({ error: data.error.message });
+        const verb = status === 'PAUSED' ? 'paused' : 'activated';
+        return res.json({ reply: `Campaign ${verb} successfully.` });
+      } catch (err) {
+        if (i === 2) return res.status(502).json({ error: err.message });
+        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      }
+    }
+  }
+
+  res.status(400).json({ error: `Unknown action type: ${action.type}` });
 });
 
 module.exports = router;
