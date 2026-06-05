@@ -179,14 +179,21 @@ function sanitizeContext(ctx) {
 
 function buildSystem(context) {
   const locationId = process.env.GHL_LOCATION_ID || '';
+  const fromNumber = process.env.GHL_FROM_NUMBER || '';
   const contextSection = context
     ? `\n\nBusiness context (use this to inform your responses and writing):\n${context}`
     : '';
+
+  const fromNumberLine = fromNumber
+    ? `Default SMS From Number: ${fromNumber}\nAlways include this as "fromNumber" when sending SMS messages via POST /conversations/messages.`
+    : `WARNING: GHL_FROM_NUMBER is not configured. SMS sending will likely fail. Ask Brandon to set this env var to the Twilio/GHL phone number assigned to this location.`;
 
   return `You are a GoHighLevel assistant for Smart Syndicator, a real estate syndication SaaS platform that helps real estate syndicators raise capital, manage investor relations, and run professional investment operations. You help Brandon, the founder, interact with his GHL sub-account using plain English.
 
 Default Location ID: ${locationId}
 Always include this as locationId (or location_id) in every request that requires it.
+
+${fromNumberLine}
 
 WRITING RULES -- follow these at all times:
 - Never use em dashes. Use commas, colons, or a plain double hyphen (--) instead.

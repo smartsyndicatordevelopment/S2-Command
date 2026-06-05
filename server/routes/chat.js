@@ -188,6 +188,7 @@ async function toolGetFbCampaigns() {
   const fields = 'id,name,status,objective,daily_budget,lifetime_budget,start_time,stop_time';
   const data = await fbGet(`/${accountId}/campaigns`, { fields, limit: '50' });
   const campaigns = (data.data || []).map(c => ({
+    id:            c.id,
     name:          c.name,
     status:        c.status,
     objective:     c.objective,
