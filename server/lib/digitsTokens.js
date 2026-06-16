@@ -1,22 +1,24 @@
 /**
- * Digits Connect OAuth token store.
+ * Digits Connect OAuth token store -- persisted in Postgres.
  *
- * Mirrors the old qbTokens.js pattern: AES-256-GCM encrypted token file on disk,
- * reusing the same ENCRYPTION_KEY env var. Stores the access + refresh tokens for
- * the single connected Digits business (this is an internal, single-tenant app).
+ * Railway's container filesystem is ephemeral (wiped on every deploy), so the
+ * token is stored in the database (single-row digits_tokens table) rather than a
+ * local file. Token values are AES-256-GCM encrypted at rest using ENCRYPTION_KEY.
  *
- * OAuth endpoints (Digits Connect, REST, authorization-code flow):
+ * The in-memory tokenCache is hydrated from the DB at startup via init() (called
+ * before the server accepts requests) so getTokenCache() stays synchronous for
+ * status checks and route guards. Writes update the cache and persist to the DB.
+ *
+ * OAuth endpoints (Digits Connect, authorization-code flow):
  *   authorize: https://connect.digits.com/v1/oauth/authorize
  *   token:     https://connect.digits.com/v1/oauth/token   (JSON body)
  *   Access token TTL: ~1 hour. Refresh token: indefinite (revoked on app uninstall).
  */
 
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 const fetch = require('node-fetch');
+const db = require('./db');
 
-const TOKENS_FILE = process.env.DIGITS_TOKENS_PATH || path.join(__dirname, '../digits-tokens.json');
 const DIGITS_TOKEN_URL = 'https://connect.digits.com/v1/oauth/token';
 const ALGORITHM = 'aes-256-gcm';
 
@@ -51,45 +53,57 @@ function decrypt(str) {
   return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
 }
 
-function isEncryptedFormat(value) {
-  return typeof value === 'string' && value.split(':').length === 3;
-}
+let tokenCache = { accessToken: '', refreshToken: '', businessId: '', expiresAt: 0 };
+let hydrated = false;
 
-function loadTokens() {
+async function loadFromDb() {
   try {
-    if (fs.existsSync(TOKENS_FILE)) {
-      const raw = JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8'));
-      if (isEncryptedFormat(raw.accessToken)) {
-        return {
-          accessToken: decrypt(raw.accessToken),
-          refreshToken: decrypt(raw.refreshToken),
-          businessId: raw.businessId ? decrypt(raw.businessId) : '',
-          expiresAt: raw.expiresAt || 0,
-        };
-      }
-      return { accessToken: '', refreshToken: '', businessId: '', expiresAt: 0 };
+    const { rows } = await db.query(
+      'SELECT access_token, refresh_token, business_id, expires_at FROM digits_tokens WHERE id = 1'
+    );
+    if (rows.length) {
+      const r = rows[0];
+      tokenCache = {
+        accessToken: decrypt(r.access_token),
+        refreshToken: decrypt(r.refresh_token),
+        businessId: r.business_id ? decrypt(r.business_id) : '',
+        expiresAt: Number(r.expires_at) || 0,
+      };
     }
-  } catch {
-    // Corrupt or unreadable -- force re-auth
-  }
-  return { accessToken: '', refreshToken: '', businessId: '', expiresAt: 0 };
-}
-
-function saveTokens(tokens) {
-  try {
-    const toSave = {
-      accessToken: encrypt(tokens.accessToken || ''),
-      refreshToken: encrypt(tokens.refreshToken || ''),
-      businessId: encrypt(tokens.businessId || ''),
-      expiresAt: tokens.expiresAt,
-    };
-    fs.writeFileSync(TOKENS_FILE, JSON.stringify(toSave, null, 2));
   } catch (err) {
-    console.error('Failed to save Digits tokens:', err.message);
+    console.error('Digits token load failed:', err.message);
+  }
+  hydrated = true;
+  return tokenCache;
+}
+
+async function persistToDb() {
+  try {
+    await db.query(
+      `INSERT INTO digits_tokens(id, access_token, refresh_token, business_id, expires_at, updated_at)
+       VALUES(1, $1, $2, $3, $4, now())
+       ON CONFLICT (id) DO UPDATE SET
+         access_token  = EXCLUDED.access_token,
+         refresh_token = EXCLUDED.refresh_token,
+         business_id   = EXCLUDED.business_id,
+         expires_at    = EXCLUDED.expires_at,
+         updated_at    = now()`,
+      [
+        encrypt(tokenCache.accessToken || ''),
+        encrypt(tokenCache.refreshToken || ''),
+        encrypt(tokenCache.businessId || ''),
+        tokenCache.expiresAt || 0,
+      ]
+    );
+  } catch (err) {
+    console.error('Digits token persist failed:', err.message);
   }
 }
 
-let tokenCache = loadTokens();
+// Hydrate the in-memory cache from the DB. Call once at server startup.
+async function init() {
+  await loadFromDb();
+}
 
 async function refreshAccessToken() {
   const { DIGITS_CLIENT_ID, DIGITS_CLIENT_SECRET } = process.env;
@@ -113,12 +127,11 @@ async function refreshAccessToken() {
   const data = await res.json();
   tokenCache = {
     accessToken: data.access_token,
-    // Digits returns a new refresh token on refresh -- store it, fall back to the old one.
     refreshToken: data.refresh_token || tokenCache.refreshToken,
     businessId: tokenCache.businessId,
     expiresAt: Date.now() + ((data.expires_in || 3600) - 60) * 1000,
   };
-  saveTokens(tokenCache);
+  await persistToDb();
   return tokenCache.accessToken;
 }
 
@@ -134,20 +147,21 @@ async function withRetry(fn, attempts = 3) {
 }
 
 async function getToken() {
+  if (!hydrated) await loadFromDb();
   if (!tokenCache.accessToken || Date.now() >= tokenCache.expiresAt) {
     return withRetry(() => refreshAccessToken());
   }
   return tokenCache.accessToken;
 }
 
-function setTokens(tokens) {
+async function setTokens(tokens) {
   tokenCache = {
     accessToken: tokens.accessToken || '',
     refreshToken: tokens.refreshToken || '',
     businessId: tokens.businessId || tokenCache.businessId || '',
     expiresAt: tokens.expiresAt || 0,
   };
-  saveTokens(tokenCache);
+  await persistToDb();
 }
 
 function getTokenCache() {
@@ -155,8 +169,9 @@ function getTokenCache() {
 }
 
 async function forceRefresh() {
+  if (!hydrated) await loadFromDb();
   tokenCache.expiresAt = 0;
   return getToken();
 }
 
-module.exports = { getToken, forceRefresh, setTokens, getTokenCache, withRetry, DIGITS_TOKEN_URL };
+module.exports = { init, getToken, forceRefresh, setTokens, getTokenCache, withRetry, DIGITS_TOKEN_URL };

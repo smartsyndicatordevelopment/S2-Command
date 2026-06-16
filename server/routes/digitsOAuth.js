@@ -62,7 +62,7 @@ router.get('/digits/callback', async (req, res) => {
     }
 
     const data = await tokenRes.json();
-    setTokens({
+    await setTokens({
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
       businessId: getTokenCache().businessId || process.env.DIGITS_BUSINESS_ID || '',

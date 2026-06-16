@@ -150,7 +150,12 @@ if (!isDev) {
 const PORT = process.env.PORT || 3001;
 
 runMigrations()
-  .then(() => {
+  .then(async () => {
+    // Hydrate the Digits token cache from Postgres before serving requests.
+    await require('./lib/digitsTokens').init().catch(err =>
+      console.error('Digits token init failed:', err.message)
+    );
+
     app.listen(PORT, () => {
       console.log(`S2 Command running on port ${PORT}`);
       if (isDev) {
