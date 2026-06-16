@@ -1,10 +1,23 @@
+/**
+ * Digits Connect OAuth token store.
+ *
+ * Mirrors the old qbTokens.js pattern: AES-256-GCM encrypted token file on disk,
+ * reusing the same ENCRYPTION_KEY env var. Stores the access + refresh tokens for
+ * the single connected Digits business (this is an internal, single-tenant app).
+ *
+ * OAuth endpoints (Digits Connect, REST, authorization-code flow):
+ *   authorize: https://connect.digits.com/v1/oauth/authorize
+ *   token:     https://connect.digits.com/v1/oauth/token   (JSON body)
+ *   Access token TTL: ~1 hour. Refresh token: indefinite (revoked on app uninstall).
+ */
+
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const fetch = require('node-fetch');
 
-const TOKENS_FILE = process.env.TOKENS_PATH || path.join(__dirname, '../tokens.json');
-const QB_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
+const TOKENS_FILE = process.env.DIGITS_TOKENS_PATH || path.join(__dirname, '../digits-tokens.json');
+const DIGITS_TOKEN_URL = 'https://connect.digits.com/v1/oauth/token';
 const ALGORITHM = 'aes-256-gcm';
 
 function getEncryptionKey() {
@@ -50,17 +63,16 @@ function loadTokens() {
         return {
           accessToken: decrypt(raw.accessToken),
           refreshToken: decrypt(raw.refreshToken),
-          realmId: decrypt(raw.realmId),
+          businessId: raw.businessId ? decrypt(raw.businessId) : '',
           expiresAt: raw.expiresAt || 0,
         };
       }
-      // Old plaintext file -- discard and force re-auth
-      return { accessToken: '', refreshToken: '', realmId: '', expiresAt: 0 };
+      return { accessToken: '', refreshToken: '', businessId: '', expiresAt: 0 };
     }
   } catch {
     // Corrupt or unreadable -- force re-auth
   }
-  return { accessToken: '', refreshToken: '', realmId: '', expiresAt: 0 };
+  return { accessToken: '', refreshToken: '', businessId: '', expiresAt: 0 };
 }
 
 function saveTokens(tokens) {
@@ -68,42 +80,43 @@ function saveTokens(tokens) {
     const toSave = {
       accessToken: encrypt(tokens.accessToken || ''),
       refreshToken: encrypt(tokens.refreshToken || ''),
-      realmId: encrypt(tokens.realmId || ''),
+      businessId: encrypt(tokens.businessId || ''),
       expiresAt: tokens.expiresAt,
     };
     fs.writeFileSync(TOKENS_FILE, JSON.stringify(toSave, null, 2));
   } catch (err) {
-    console.error('Failed to save QB tokens:', err.message);
+    console.error('Failed to save Digits tokens:', err.message);
   }
 }
 
 let tokenCache = loadTokens();
 
 async function refreshAccessToken() {
-  const { QB_CLIENT_ID, QB_CLIENT_SECRET } = process.env;
-  const creds = Buffer.from(`${QB_CLIENT_ID}:${QB_CLIENT_SECRET}`).toString('base64');
+  const { DIGITS_CLIENT_ID, DIGITS_CLIENT_SECRET } = process.env;
 
-  const res = await fetch(QB_TOKEN_URL, {
+  const res = await fetch(DIGITS_TOKEN_URL, {
     method: 'POST',
-    headers: {
-      Authorization: `Basic ${creds}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-    },
-    body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(tokenCache.refreshToken)}`,
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      client_id: DIGITS_CLIENT_ID,
+      client_secret: DIGITS_CLIENT_SECRET,
+      refresh_token: tokenCache.refreshToken,
+    }),
   });
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`QB token refresh failed ${res.status}: ${body}`);
+    throw new Error(`Digits token refresh failed ${res.status}: ${body}`);
   }
 
   const data = await res.json();
   tokenCache = {
     accessToken: data.access_token,
+    // Digits returns a new refresh token on refresh -- store it, fall back to the old one.
     refreshToken: data.refresh_token || tokenCache.refreshToken,
-    realmId: tokenCache.realmId,
-    expiresAt: Date.now() + (data.expires_in - 60) * 1000,
+    businessId: tokenCache.businessId,
+    expiresAt: Date.now() + ((data.expires_in || 3600) - 60) * 1000,
   };
   saveTokens(tokenCache);
   return tokenCache.accessToken;
@@ -128,8 +141,13 @@ async function getToken() {
 }
 
 function setTokens(tokens) {
-  tokenCache = tokens;
-  saveTokens(tokens);
+  tokenCache = {
+    accessToken: tokens.accessToken || '',
+    refreshToken: tokens.refreshToken || '',
+    businessId: tokens.businessId || tokenCache.businessId || '',
+    expiresAt: tokens.expiresAt || 0,
+  };
+  saveTokens(tokenCache);
 }
 
 function getTokenCache() {
@@ -141,4 +159,4 @@ async function forceRefresh() {
   return getToken();
 }
 
-module.exports = { getToken, forceRefresh, setTokens, getTokenCache, withRetry, QB_TOKEN_URL };
+module.exports = { getToken, forceRefresh, setTokens, getTokenCache, withRetry, DIGITS_TOKEN_URL };

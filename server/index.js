@@ -11,9 +11,9 @@ const { startSyncRunner } = require('./lib/syncEngine');
 const { warmAll: warmMetrics } = require('./lib/metricsCache');
 
 const authRouter = require('./routes/auth');
-const qbOAuthRouter = require('./routes/qbOAuth');
+const digitsOAuthRouter = require('./routes/digitsOAuth');
 const stripeRouter = require('./routes/stripe');
-const quickbooksRouter = require('./routes/quickbooks');
+const digitsRouter = require('./routes/digits');
 const salesTaxRouter = require('./routes/salesTax');
 const chatRouter     = require('./routes/chat');
 const ghlRouter        = require('./routes/ghl');
@@ -23,9 +23,10 @@ const ghlEmailStudioRouter = require('./routes/ghlEmailStudio');
 const clickupChatRouter   = require('./routes/clickupChat');
 const fbChatRouter        = require('./routes/fbChat');
 const makeChatRouter      = require('./routes/makeChat');
-const qbChatRouter        = require('./routes/qbChat');
+const digitsChatRouter    = require('./routes/digitsChat');
 const sessionsRouter      = require('./routes/sessions');
 const integrateRouter     = require('./routes/integrate');
+const statusRouter        = require('./routes/status');
 
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT_NAME;
@@ -97,7 +98,7 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests -- please wait 15 minutes' },
 });
 
-// Stricter limit for the chat endpoint (each request calls Anthropic + possibly Stripe/QB)
+// Stricter limit for the chat endpoint (each request calls Anthropic + possibly Stripe/Digits)
 const chatLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 30,
@@ -109,7 +110,7 @@ const chatLimiter = rateLimit({
 // Unauthenticated routes
 app.use('/auth/login', loginLimiter);
 app.use('/auth', authRouter);
-app.use('/auth', qbOAuthRouter); // /auth/quickbooks and /auth/quickbooks/callback
+app.use('/auth', digitsOAuthRouter); // /auth/digits and /auth/digits/callback
 
 // Auth middleware for all /api routes
 function requireAuth(req, res, next) {
@@ -123,7 +124,7 @@ app.use('/api', apiLimiter);
 app.use('/api/chat', chatLimiter); // additional limit on the Anthropic-backed endpoint
 
 app.use('/api', stripeRouter);
-app.use('/api', quickbooksRouter);
+app.use('/api', digitsRouter);
 app.use('/api', salesTaxRouter);
 app.use('/api', chatRouter);
 app.use('/api', ghlRouter);
@@ -133,9 +134,10 @@ app.use('/api', ghlEmailStudioRouter);
 app.use('/api', clickupChatRouter);
 app.use('/api', fbChatRouter);
 app.use('/api', makeChatRouter);
-app.use('/api', qbChatRouter);
+app.use('/api', digitsChatRouter);
 app.use('/api', sessionsRouter);
 app.use('/api', integrateRouter);
+app.use('/api', statusRouter);
 
 // Serve React build in production
 if (!isDev) {

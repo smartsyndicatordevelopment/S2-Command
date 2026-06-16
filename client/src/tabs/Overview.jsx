@@ -3,7 +3,7 @@ import { Send } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { Message, TypingIndicator, ApprovalCard, SessionSidebar } from '../components/AgentChat';
 
-const GREETING = "Hi Brandon. I'm your business analyst -- connected live to Stripe, QuickBooks, Facebook Ads, GHL, and Make. Ask me anything about MRR, revenue, expenses, ad performance, your pipeline, or automations. I pull live data before answering.";
+const GREETING = "Hi Brandon. I'm your business analyst -- connected live to Stripe, Digits, Facebook Ads, GHL, and Make. Ask me anything about MRR, revenue, expenses, ad performance, your pipeline, or automations. I pull live data before answering.";
 
 const QUICK_PROMPTS = [
   'What is my MRR and ARR right now?',
@@ -182,7 +182,7 @@ export default function Overview() {
       <div className="mb-4 flex-shrink-0">
         <h1 className="text-lg font-semibold" style={{ color: 'var(--c-text-primary)' }}>Overview</h1>
         <p className="text-xs mt-0.5" style={{ color: 'var(--c-muted)' }}>
-          Ask your business analyst anything -- live data across Stripe, QuickBooks, Facebook Ads, GHL, and Make
+          Ask your business analyst anything -- live data across Stripe, Digits, Facebook Ads, GHL, and Make
         </p>
       </div>
 

@@ -123,7 +123,7 @@ export default function BusinessPlan() {
       actual: a(cac, v => fmtUsd(v)),
       tooltip: cac > 0
         ? `${fmtUsd(spend3m)} mktg spend (90 days) / ${newLast3m} new customers`
-        : qbReady ? `No QB marketing accounts found` : `Connect QuickBooks to calculate`,
+        : qbReady ? `No Digits marketing categories found` : `Connect Digits to calculate`,
     },
     {
       label: 'LTV : CAC',

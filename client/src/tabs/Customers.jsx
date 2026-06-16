@@ -335,8 +335,8 @@ export default function Customers() {
                 {qbConfigured
                   ? marketingAccounts.length > 0
                     ? `How much it costs on average to acquire one new paying customer.\n${fmtMrr(spend)} marketing spend ÷ ${windowNewCustomers} new customers\nAccounts: ${marketingAccounts.join(', ')}`
-                    : `How much it costs on average to acquire one new paying customer.\nNo marketing/advertising QB accounts found in this window`
-                  : 'How much it costs on average to acquire one new paying customer.\nConnect QuickBooks to calculate'}
+                    : `How much it costs on average to acquire one new paying customer.\nNo marketing/advertising expense categories found in this window`
+                  : 'How much it costs on average to acquire one new paying customer.\nConnect Digits to calculate'}
               </div>
             )}
           </div>
@@ -352,7 +352,7 @@ export default function Customers() {
           accent={ltvCacRatio >= 16 ? 'green' : ltvCacRatio >= 8 ? 'yellow' : ltvCacRatio > 0 ? 'red' : 'white'}
           tooltip={ltvCacRatio > 0
             ? `How many dollars of lifetime value are generated for every dollar spent acquiring a customer. Higher is better.\nLTV window: ${WINDOW_LABELS[ltvWindow]} -- CAC window: ${cacWindow === 'all' ? 'all time' : `last ${WINDOW_LABELS[cacWindow]}`}\nLTV (${fmtMrr(ltvDollars)}) ÷ CAC (${fmtMrr(cac)})`
-            : qbConfigured ? 'How many dollars of lifetime value are generated per acquisition dollar.\nRequires CAC data from QuickBooks' : 'How many dollars of lifetime value are generated per acquisition dollar.\nConnect QuickBooks to calculate'}
+            : qbConfigured ? 'How many dollars of lifetime value are generated per acquisition dollar.\nRequires CAC data from Digits' : 'How many dollars of lifetime value are generated per acquisition dollar.\nConnect Digits to calculate'}
           loading={subs.loading || mktg.loading}
         />
       </div>

@@ -16,7 +16,8 @@ import GHLMcp from '../tabs/GHLMcp';
 import ClickUpMcp from '../tabs/ClickUpMcp';
 import FBAds from '../tabs/FBAds';
 import MakeAgent from '../tabs/MakeAgent';
-import QBAgent from '../tabs/QBAgent';
+import DigitsAgent from '../tabs/DigitsAgent';
+import Settings from '../tabs/Settings';
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview' },
@@ -49,9 +50,10 @@ const NAV_ITEMS = [
       { id: 'clickupmcp', label: 'ClickUp Agent' },
       { id: 'fbads',     label: 'Facebook Ads Agent' },
       { id: 'makeagent', label: 'Make.com Agent' },
-      { id: 'qbagent',   label: 'QuickBooks Agent' },
+      { id: 'digitsagent', label: 'Digits Agent' },
     ],
   },
+  { id: 'settings', label: 'Settings' },
 ];
 
 const TAB_COMPONENTS = {
@@ -69,7 +71,8 @@ const TAB_COMPONENTS = {
   clickupmcp: ClickUpMcp,
   fbads:      FBAds,
   makeagent:  MakeAgent,
-  qbagent:    QBAgent,
+  digitsagent: DigitsAgent,
+  settings:   Settings,
 };
 
 function NavDropdown({ item, activeTab, onSelect }) {

@@ -2,7 +2,7 @@ const router = require('express').Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const Stripe = require('stripe');
 const fetch = require('node-fetch');
-const { getToken, forceRefresh } = require('../lib/qbTokens');
+const { fetchPnL: digitsFetchPnL } = require('./digits');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -44,73 +44,6 @@ async function listAllStripe(fetcher) {
     else hasMore = false;
   }
   return results;
-}
-
-// -- QuickBooks helpers --
-
-async function qbGet(endpoint) {
-  const realmId = process.env.QB_REALM_ID;
-  if (!realmId) throw new Error('QuickBooks not configured (QB_REALM_ID missing)');
-  const sep = endpoint.includes('?') ? '&' : '?';
-  const url = `https://quickbooks.api.intuit.com/v3/company/${realmId}${endpoint}${sep}minorversion=65`;
-  const doRequest = async (token) => {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
-    if (res.status === 401) return null;
-    if (!res.ok) throw new Error(`QB API ${res.status} for ${endpoint}`);
-    return res.json();
-  };
-  let token = await getToken();
-  let data = await doRequest(token);
-  if (data === null) {
-    token = await forceRefresh();
-    data = await doRequest(token);
-    if (data === null) throw new Error('QB API unauthorized after token refresh');
-  }
-  return data;
-}
-
-function parseAmount(str) {
-  if (!str) return 0;
-  return parseFloat(str.replace(/,/g, '').trim()) || 0;
-}
-
-function extractDataRows(rows) {
-  const lines = [];
-  for (const row of rows || []) {
-    if (row?.type === 'Data') {
-      const name = row?.ColData?.[0]?.value || '';
-      const amount = parseAmount(row?.ColData?.[1]?.value);
-      if (name) lines.push({ name, amount });
-    } else if (row?.type === 'Section') {
-      lines.push(...extractDataRows(row?.Rows?.Row));
-    }
-  }
-  return lines;
-}
-
-function parsePnL(data) {
-  const rows = data?.Rows?.Row || [];
-  let totalIncome = 0, totalExpenses = 0, netIncome = 0;
-  const expenseLines = [];
-  for (const row of rows) {
-    if (row?.type !== 'Section') continue;
-    const header = row?.Header?.ColData?.[0]?.value || '';
-    const summaryLabel = row?.Summary?.ColData?.[0]?.value || '';
-    const summaryAmt = parseAmount(row?.Summary?.ColData?.[1]?.value);
-    const label = (header || summaryLabel).toLowerCase();
-    if (label.includes('income') || label.includes('revenue')) {
-      totalIncome = summaryAmt;
-    } else if (label.includes('expense') || label.includes('cost of')) {
-      totalExpenses += summaryAmt;
-      expenseLines.push(...extractDataRows(row?.Rows?.Row));
-    } else if (label.includes('net income') || label.includes('net profit') || label.includes('net loss')) {
-      netIncome = summaryAmt;
-    }
-  }
-  if (netIncome === 0 && totalIncome !== 0) netIncome = totalIncome - totalExpenses;
-  return { totalIncome, totalExpenses, netIncome, expenseLines };
 }
 
 // -- Facebook Ads helpers --
@@ -386,10 +319,8 @@ async function toolGetPnL(year) {
   const currentYear = new Date().getFullYear();
   const startDate = `${year}-01-01`;
   const endDate = year === currentYear ? today : `${year}-12-31`;
-  const data = await withRetry(() =>
-    qbGet(`/reports/ProfitAndLoss?start_date=${startDate}&end_date=${endDate}&accounting_method=Cash`)
-  );
-  return { year, ...parsePnL(data), startDate, endDate };
+  const parsed = await digitsFetchPnL({ interval: 'Year', year, index: year, startDate, endDate });
+  return { year, ...parsed, startDate, endDate };
 }
 
 async function toolGetSalesTax(month) {
@@ -483,7 +414,7 @@ const TOOLS = [
   },
   {
     name: 'get_pnl',
-    description: 'Fetch QuickBooks Profit & Loss report for a specific year (Cash basis). Returns total income, total expenses, net income, and itemized expense lines.',
+    description: 'Fetch the Digits Profit & Loss statement for a specific year. Returns total income, total expenses, net income, and itemized expense lines.',
     input_schema: {
       type: 'object',
       properties: { year: { type: 'integer', description: 'Year, e.g. 2025 or 2026' } },
@@ -597,8 +528,8 @@ function buildSystemPrompt(ctx) {
     `- get_ytd_revenue             -- year-to-date paid invoices`,
     `- get_sales_tax(YYYY-MM)      -- Texas 8.25% liability for any month`,
     ``,
-    `QuickBooks (accounting):`,
-    `- get_pnl(year)               -- full P&L for any year (Cash basis)`,
+    `Digits (accounting):`,
+    `- get_pnl(year)               -- full Digits P&L statement for any year`,
     ``,
     `Facebook Ads (paid acquisition):`,
     `- get_fb_performance(date_preset, level) -- level="account" for totals, "campaign"/"adset"/"ad" for breakdowns. Returns spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, ROAS per row`,

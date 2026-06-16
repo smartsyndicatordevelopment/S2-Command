@@ -1,11 +1,11 @@
 const router = require('express').Router();
 const { query } = require('../lib/db');
 
-const VALID_AGENTS = new Set(['ghl', 'clickup', 'fb', 'make', 'qb', 'overview']);
+const VALID_AGENTS = new Set(['ghl', 'clickup', 'fb', 'make', 'digits', 'overview']);
 
 function validateAgent(agent, res) {
   if (!VALID_AGENTS.has(agent)) {
-    res.status(400).json({ error: 'invalid agent -- must be ghl, clickup, or fb' });
+    res.status(400).json({ error: `invalid agent -- must be one of: ${[...VALID_AGENTS].join(', ')}` });
     return false;
   }
   return true;

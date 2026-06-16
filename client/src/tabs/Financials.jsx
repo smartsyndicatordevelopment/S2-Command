@@ -181,7 +181,7 @@ function FinancialBreakdown({ lines, divisor, totalAmount, label, isIncome = fal
       <div className="flex items-center justify-between mb-5">
         <div>
           <p className="text-xs font-medium uppercase tracking-widest text-muted">{label}</p>
-          <p className="text-xs text-muted mt-0.5">QuickBooks line items -- click categories to expand</p>
+          <p className="text-xs text-muted mt-0.5">Digits line items -- click categories to expand</p>
         </div>
         {showToggle && (
           <div className="flex items-center gap-1 bg-bg rounded-lg p-1 border border-border">
@@ -282,7 +282,7 @@ export default function Financials() {
   const lastMonthExpenseLines = processGroupedLines(lastMonth.groupedExpenseLines);
   const lastMonthIncomeLines = processGroupedLines(lastMonth.groupedIncomeLines);
 
-  // Software subscriptions (from transaction-level QB query)
+  // Software subscriptions (from transaction-level Digits query)
   const allSubs12m = subscriptions.data?.vendors || [];
   const allSubs30d = subscriptions.data?.vendors30d || [];
   const softwareSubs = subPeriod === '30d' ? allSubs30d : allSubs12m;
@@ -308,7 +308,7 @@ export default function Financials() {
         <div>
           <h1 className="text-lg font-semibold text-white">Financials</h1>
           <p className="text-xs text-muted mt-0.5">
-            QuickBooks -- Cash basis
+            Digits
             {reconciled && reconciledThrough && showAnnual && (
               <span className="ml-2 text-green">-- Through {reconciledThrough}</span>
             )}
@@ -322,10 +322,10 @@ export default function Financials() {
 
       {notConfigured && (
         <div className="flex items-center justify-between bg-yellow/10 border border-yellow/20 rounded-lg px-4 py-3">
-          <p className="text-sm text-yellow">QuickBooks not connected.</p>
-          <a href="/auth/quickbooks" target="_blank" rel="noreferrer"
+          <p className="text-sm text-yellow">Digits not connected.</p>
+          <a href="/auth/digits" target="_blank" rel="noreferrer"
             className="text-xs text-yellow border border-yellow/30 rounded px-3 py-1.5 hover:bg-yellow/10 transition-colors flex-shrink-0 ml-4">
-            Connect QB
+            Connect Digits
           </a>
         </div>
       )}
@@ -591,7 +591,7 @@ export default function Financials() {
                     <div>
                       <p className="text-xs font-medium uppercase tracking-widest text-muted">Software Subscriptions</p>
                       <p className="text-xs text-muted mt-0.5">
-                        Detected from QuickBooks -- billing frequency estimated from transaction history
+                        Detected from Digits -- billing frequency estimated from transaction history
                       </p>
                     </div>
                     {!subscriptions.loading && (
