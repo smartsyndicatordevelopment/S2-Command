@@ -72,7 +72,7 @@ app.use(session({
   cookie: {
     httpOnly: true,
     secure: !isDev,
-    sameSite: 'strict',
+    sameSite: 'lax', // lax (not strict) so OAuth redirect callbacks still send the session cookie
     maxAge: 24 * 60 * 60 * 1000,
   },
 }));
