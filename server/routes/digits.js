@@ -375,8 +375,26 @@ router.get('/digits/status', (req, res) => {
   });
 });
 
-// TEMPORARY diagnostic -- remove once P&L is confirmed. Returns a compact view of
-// the live Digits P&L response so parsing can be verified without dumping ~190K of JSON.
+// TEMPORARY diagnostic -- remove once P&L is confirmed. Dumps a depth-limited
+// skeleton of the live Digits P&L response so the actual node structure (field
+// names + nesting) is visible without an unmanageable full JSON paste. Arrays are
+// capped to 4 items per level so deep trees stay small but their shape is intact.
+function skeleton(node, depth = 0) {
+  if (depth > 8) return '...';
+  if (Array.isArray(node)) {
+    const out = node.slice(0, 4).map(n => skeleton(n, depth + 1));
+    if (node.length > 4) out.push(`...(${node.length} total)`);
+    return out;
+  }
+  if (node && typeof node === 'object') {
+    const out = {};
+    for (const k of Object.keys(node)) out[k] = skeleton(node[k], depth + 1);
+    return out;
+  }
+  if (typeof node === 'string' && node.length > 80) return node.slice(0, 80) + '...';
+  return node;
+}
+
 router.get('/digits/debug-pnl', async (req, res) => {
   if (!digitsConfigured()) return res.json({ error: 'not configured' });
   const year = parseInt(req.query.year, 10) || 2025;
@@ -384,17 +402,10 @@ router.get('/digits/debug-pnl', async (req, res) => {
   const endDate = `${year}-12-31`;
   try {
     const statement = await digitsGet('/v1/ledger/statement/profit-and-loss', { interval: 'Year', startDate, endDate });
-    const rows = Array.isArray(statement?.rows) ? statement.rows : [];
     res.json({
       year,
       topLevelKeys: Object.keys(statement || {}),
-      rowCount: rows.length,
-      sampleRowIds: rows.slice(0, 30).map(r => r.row_id),
-      summaryRows: rows.filter(r => r.section_summary).map(r => ({
-        row_id: r.row_id,
-        label: r.section_summary.label,
-        value: r.section_summary.money_flow?.value,
-      })),
+      structure: skeleton(statement),
       parsed: parsePnL(statement),
     });
   } catch (err) {
