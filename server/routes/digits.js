@@ -122,15 +122,14 @@ function parsePnL(statement) {
   };
 }
 
-async function fetchPnL({ interval, year, index, startDate, endDate }) {
+// Param names per the Digits OpenAPI: startDate, endDate, interval (camelCase).
+// The date range defines the period; interval sets the granularity.
+async function fetchPnL({ interval, startDate, endDate }) {
   const statement = await withRetry(() =>
     digitsGet('/v1/ledger/statement/profit-and-loss', {
       interval,
-      year,
-      index,
-      interval_count: 1,
-      start_date: startDate,
-      end_date: endDate,
+      startDate,
+      endDate,
     })
   );
   return parsePnL(statement);
@@ -374,6 +373,33 @@ router.get('/digits/status', (req, res) => {
     tokenExpired: Date.now() >= cache.expiresAt,
     expiresAt: cache.expiresAt,
   });
+});
+
+// TEMPORARY diagnostic -- remove once P&L is confirmed. Returns a compact view of
+// the live Digits P&L response so parsing can be verified without dumping ~190K of JSON.
+router.get('/digits/debug-pnl', async (req, res) => {
+  if (!digitsConfigured()) return res.json({ error: 'not configured' });
+  const year = parseInt(req.query.year, 10) || 2025;
+  const startDate = `${year}-01-01`;
+  const endDate = `${year}-12-31`;
+  try {
+    const statement = await digitsGet('/v1/ledger/statement/profit-and-loss', { interval: 'Year', startDate, endDate });
+    const rows = Array.isArray(statement?.rows) ? statement.rows : [];
+    res.json({
+      year,
+      topLevelKeys: Object.keys(statement || {}),
+      rowCount: rows.length,
+      sampleRowIds: rows.slice(0, 30).map(r => r.row_id),
+      summaryRows: rows.filter(r => r.section_summary).map(r => ({
+        row_id: r.row_id,
+        label: r.section_summary.label,
+        value: r.section_summary.money_flow?.value,
+      })),
+      parsed: parsePnL(statement),
+    });
+  } catch (err) {
+    res.json({ year, error: err.message });
+  }
 });
 
 module.exports = router;
