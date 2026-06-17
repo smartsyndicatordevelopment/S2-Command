@@ -314,13 +314,26 @@ async function toolGetYtdRevenue() {
   };
 }
 
-async function toolGetPnL(year) {
+async function toolGetPnL({ year, start_date, end_date, interval } = {}) {
   const today = new Date().toISOString().split('T')[0];
   const currentYear = new Date().getFullYear();
-  const startDate = `${year}-01-01`;
-  const endDate = year === currentYear ? today : `${year}-12-31`;
-  const parsed = await digitsFetchPnL({ interval: 'Year', year, index: year, startDate, endDate });
-  return { year, ...parsed, startDate, endDate };
+
+  let startDate, endDate, iv;
+  if (start_date && end_date) {
+    // Explicit period (month, quarter, custom range).
+    startDate = start_date;
+    endDate = end_date;
+    iv = interval || 'Month';
+  } else {
+    // Full calendar year (current year capped at today).
+    const y = year || currentYear;
+    startDate = `${y}-01-01`;
+    endDate = y === currentYear ? today : `${y}-12-31`;
+    iv = 'Year';
+  }
+
+  const parsed = await digitsFetchPnL({ interval: iv, startDate, endDate });
+  return { startDate, endDate, interval: iv, ...parsed };
 }
 
 async function toolGetSalesTax(month) {
@@ -414,11 +427,16 @@ const TOOLS = [
   },
   {
     name: 'get_pnl',
-    description: 'Fetch the Digits Profit & Loss statement for a specific year. Returns total income, total expenses, net income, and itemized expense lines.',
+    description: 'Fetch the Digits Profit & Loss statement for any period -- a single month, a quarter, a custom range, or a full year. For a specific month (e.g. "last month" / "May 2026") pass start_date and end_date for that month. For a full year pass year. Returns total income, total expenses, net income, and itemized income/expense lines for that exact period.',
     input_schema: {
       type: 'object',
-      properties: { year: { type: 'integer', description: 'Year, e.g. 2025 or 2026' } },
-      required: ['year'],
+      properties: {
+        start_date: { type: 'string', description: 'Period start in YYYY-MM-DD, e.g. 2026-05-01 for May 2026. Use with end_date for month/quarter/custom ranges.' },
+        end_date:   { type: 'string', description: 'Period end in YYYY-MM-DD, e.g. 2026-05-31. Use with start_date.' },
+        year:       { type: 'integer', description: 'Full calendar year, e.g. 2025 or 2026. Used only when start_date/end_date are not provided.' },
+        interval:   { type: 'string', enum: ['Year', 'Quarter', 'Month'], description: 'Granularity. Defaults to Month for a date range, Year for a full year.' },
+      },
+      required: [],
     },
   },
   {
@@ -490,7 +508,7 @@ async function executeTool(name, input) {
   switch (name) {
     case 'get_subscriptions': return await toolGetSubscriptions(input.status);
     case 'get_ytd_revenue':   return await toolGetYtdRevenue();
-    case 'get_pnl':           return await toolGetPnL(input.year);
+    case 'get_pnl':           return await toolGetPnL(input);
     case 'get_sales_tax':     return await toolGetSalesTax(input.month);
     case 'get_fb_performance': return await toolGetFbPerformance(input.date_preset, input.level);
     case 'get_fb_campaigns':   return await toolGetFbCampaigns();
@@ -529,7 +547,7 @@ function buildSystemPrompt(ctx) {
     `- get_sales_tax(YYYY-MM)      -- Texas 8.25% liability for any month`,
     ``,
     `Digits (accounting):`,
-    `- get_pnl(year)               -- full Digits P&L statement for any year`,
+    `- get_pnl(...)                -- Digits P&L for any period: pass start_date + end_date for a specific month/quarter/range (e.g. "last month"), or year for a full year`,
     ``,
     `Facebook Ads (paid acquisition):`,
     `- get_fb_performance(date_preset, level) -- level="account" for totals, "campaign"/"adset"/"ad" for breakdowns. Returns spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, ROAS per row`,
