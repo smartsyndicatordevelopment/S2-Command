@@ -380,10 +380,10 @@ router.get('/digits/status', (req, res) => {
 // names + nesting) is visible without an unmanageable full JSON paste. Arrays are
 // capped to 4 items per level so deep trees stay small but their shape is intact.
 function skeleton(node, depth = 0) {
-  if (depth > 8) return '...';
+  if (depth > 20) return '...';
   if (Array.isArray(node)) {
-    const out = node.slice(0, 4).map(n => skeleton(n, depth + 1));
-    if (node.length > 4) out.push(`...(${node.length} total)`);
+    const out = node.slice(0, 8).map(n => skeleton(n, depth + 1));
+    if (node.length > 8) out.push(`...(${node.length} total)`);
     return out;
   }
   if (node && typeof node === 'object') {
