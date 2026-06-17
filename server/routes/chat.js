@@ -179,16 +179,18 @@ async function toolGetGhlPipeline() {
 }
 
 async function toolGetGhlContacts() {
-  const now       = new Date();
-  const thirtyAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [allData, recentData] = await Promise.all([
-    ghlGet('/contacts/', { limit: '1' }),
-    ghlGet('/contacts/', { startAfterDate: thirtyAgo, limit: '1' }),
-  ]);
-  return {
-    totalContacts:    allData.meta?.total   || allData.total   || null,
-    recentContacts30d: recentData.meta?.total || recentData.total || null,
-  };
+  // GHL's GET /contacts/ rejects a startAfterDate query with HTTP 422, and the
+  // two lookups were in one Promise.all -- so the 30-day query failing took the
+  // whole tool down. Fetch the total independently; the 30-day-new count needs
+  // the POST /contacts/search endpoint, so leave it null rather than 422.
+  let totalContacts = null;
+  try {
+    const allData = await ghlGet('/contacts/', { limit: '1' });
+    totalContacts = allData.meta?.total ?? allData.total ?? null;
+  } catch (err) {
+    console.error('toolGetGhlContacts total error:', err.message);
+  }
+  return { totalContacts, recentContacts30d: null };
 }
 
 // -- Make.com helpers --
@@ -231,6 +233,62 @@ async function toolGetMakeOverview() {
       lastRun:       s.lastEdit  || null,
       nextExecution: s.scheduling?.nextExecution || null,
     })),
+  };
+}
+
+// -- ClickUp helpers --
+
+async function clickupGet(endpoint) {
+  const apiKey = process.env.CLICKUP_API_KEY;
+  if (!apiKey) throw new Error('CLICKUP_API_KEY not configured');
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch(`https://api.clickup.com/api/v2${endpoint}`, {
+        headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+      });
+      if (!r.ok) throw new Error(`ClickUp API ${r.status} for ${endpoint}`);
+      return r.json();
+    } catch (err) {
+      if (i === 2) throw err;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+}
+
+async function toolGetClickupTasks(overdueOnly) {
+  const teamId = process.env.CLICKUP_TEAM_ID;
+  if (!teamId) throw new Error('CLICKUP_TEAM_ID not configured');
+  const now = Date.now();
+
+  // Filtered team tasks (open only), paginated 100/page; cap pages defensively.
+  const all = [];
+  for (let page = 0; page < 5; page++) {
+    const params = new URLSearchParams({
+      include_closed: 'false',
+      subtasks:       'true',
+      order_by:       'due_date',
+      page:           String(page),
+    });
+    if (overdueOnly) params.set('due_date_lt', String(now));
+    const data  = await clickupGet(`/team/${teamId}/task?${params}`);
+    const tasks = data.tasks || [];
+    all.push(...tasks);
+    if (tasks.length < 100) break;
+  }
+
+  const tasks = all.map(t => ({
+    name:      t.name,
+    status:    t.status?.status || null,
+    dueDate:   t.due_date ? new Date(Number(t.due_date)).toLocaleDateString('en-US') : null,
+    overdue:   t.due_date ? Number(t.due_date) < now : false,
+    assignees: (t.assignees || []).map(a => a.username).filter(Boolean),
+    list:      t.list?.name || null,
+  }));
+
+  return {
+    totalOpen:    tasks.length,
+    overdueCount: tasks.filter(t => t.overdue).length,
+    tasks:        tasks.slice(0, 50),
   };
 }
 
@@ -489,6 +547,17 @@ const TOOLS = [
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
+    name: 'get_clickup_tasks',
+    description: 'Fetch open ClickUp tasks for the workspace -- names, statuses, due dates, assignees, and lists -- plus totalOpen and overdueCount. Use for any project/task question: how many open or overdue tasks, what is due, workload by person. Pass overdue_only=true to fetch only tasks already past their due date.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        overdue_only: { type: 'boolean', description: 'When true, only return tasks past their due date.' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'toggle_fb_campaign',
     description: 'Pause or activate a Facebook ad campaign. Requires user approval before executing -- do not call this without confirming intent. Use get_fb_campaigns first to find the campaign ID.',
     input_schema: {
@@ -515,6 +584,7 @@ async function executeTool(name, input) {
     case 'get_ghl_pipeline':   return await toolGetGhlPipeline();
     case 'get_ghl_contacts':   return await toolGetGhlContacts();
     case 'get_make_overview':  return await toolGetMakeOverview();
+    case 'get_clickup_tasks':  return await toolGetClickupTasks(input.overdue_only);
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }
@@ -556,10 +626,13 @@ function buildSystemPrompt(ctx) {
     ``,
     `GHL CRM (contacts and pipeline):`,
     `- get_ghl_pipeline            -- opportunity count, pipeline value, breakdown by stage`,
-    `- get_ghl_contacts            -- total contacts and 30-day new contact count`,
+    `- get_ghl_contacts            -- total contact count`,
     ``,
     `Make.com (automations):`,
     `- get_make_overview           -- scenario count, active vs inactive, last-run times`,
+    ``,
+    `ClickUp (tasks and projects):`,
+    `- get_clickup_tasks(overdue_only) -- open tasks with status, due date, assignee, list, plus totalOpen and overdueCount. Pass overdue_only=true for just-past-due tasks.`,
     ``,
     `RULE: For any question requiring accurate numbers, call the appropriate tool first. Do not guess from the snapshot above.`,
     ``,
