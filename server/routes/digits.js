@@ -62,64 +62,82 @@ function digitsConfigured() {
 
 // ─── P&L statement ────────────────────────────────────────────────────────────
 //
-// GET /v1/ledger/statement/profit-and-loss returns { kind, rows: [...] }.
-// Rows are a flat render list; hierarchy is conveyed by `depth` + row_id naming.
-// Amounts live in `money_flow.value` as signed DOLLAR floats (expenses negative).
-//
-// NOTE: the exact period query-param names are confirmed against the live API on
-// first connection. We send the same fields the Digits statement model uses
-// (interval/year/index/interval_count). If they differ, digitsRequest throws and
-// the caller returns a graceful zeroed result -- nothing crashes.
+// GET /v1/ledger/statement/profit-and-loss returns { rows: [tree] } -- a single
+// root StatementRow ("Net Income") with nested children. Each node:
+//   { label, total: { amount, code }, summary: { kind }, category, children }
+// total.amount is in MINOR UNITS (cents) -> divide by 100 for dollars. Section
+// rows carry summary.kind; leaf rows carry category. Income vs expense is decided
+// by which section a leaf sits under (leaves have no type of their own).
 
-const PNL_PREFIX = 'com.digits.report.profitandloss.row.';
-
-function numVal(node) {
-  const v = node?.money_flow?.value;
-  return typeof v === 'number' ? v : 0;
+function dollars(node) {
+  const a = node?.total?.amount;
+  return typeof a === 'number' ? a / 100 : 0; // minor units -> dollars
 }
 
-function sectionSummary(rows, key) {
-  const row = rows.find(r => r.row_id === PNL_PREFIX + key && r.section_summary);
-  return row ? numVal(row.section_summary) : 0;
+function kindOf(node) {
+  return node?.summary?.kind || null;
+}
+
+function childrenOf(node) {
+  return Array.isArray(node?.children) ? node.children : [];
+}
+
+// Depth-first search for the first node anywhere in the tree with a given summary kind.
+function firstByKind(rows, kind) {
+  const stack = [...rows];
+  while (stack.length) {
+    const node = stack.shift();
+    if (kindOf(node) === kind) return node;
+    stack.unshift(...childrenOf(node));
+  }
+  return null;
+}
+
+// Flatten a section's deepest leaf accounts into { name, amount } line items.
+function collectLeaves(node, out) {
+  const kids = childrenOf(node);
+  if (!kids.length) {
+    const amount = Math.abs(dollars(node));
+    if (node?.label && amount !== 0) out.push({ name: node.label, amount });
+  } else {
+    for (const c of kids) collectLeaves(c, out);
+  }
+  return out;
+}
+
+// Preserve hierarchy for the expandable breakdown panels.
+function toGroup(node) {
+  return {
+    name: node?.label || 'Unknown',
+    amount: Math.abs(dollars(node)),
+    children: childrenOf(node).map(toGroup),
+  };
 }
 
 function parsePnL(statement) {
   const rows = Array.isArray(statement?.rows) ? statement.rows : [];
 
-  const income      = sectionSummary(rows, 'IncomeSummary');
-  const otherIncome = sectionSummary(rows, 'OtherIncomeSummary');
-  const cogs        = sectionSummary(rows, 'CostOfGoodsSoldSummary');
-  const opEx        = sectionSummary(rows, 'OperatingExpensesSummary');
-  const otherEx     = sectionSummary(rows, 'OtherExpensesSummary');
-  const netRow      = rows.find(r => r.row_id === PNL_PREFIX + 'NetIncomeSummary' && r.section_summary);
+  const incomeSec   = firstByKind(rows, 'Income');
+  const cogsSec     = firstByKind(rows, 'CostOfGoodsSold');
+  const opExSec     = firstByKind(rows, 'OperatingExpenses');
+  const otherIncSec = firstByKind(rows, 'OtherIncome');
+  const otherExpSec = firstByKind(rows, 'OtherExpenses');
+  const netSec      = firstByKind(rows, 'NetIncome');
 
-  const totalIncome = income + otherIncome;
-  // Expense section totals are negative -- flip to positive magnitude.
-  const totalExpenses = -(cogs + opEx + otherEx);
+  const totalIncome   = dollars(incomeSec) + dollars(otherIncSec);
+  const totalExpenses = dollars(cogsSec) + dollars(opExSec) + dollars(otherExpSec);
+  const netIncome     = netSec ? dollars(netSec) : totalIncome - totalExpenses;
 
-  const expenseLines = [];
-  const incomeLines = [];
-  for (const r of rows) {
-    const leaf = r.leaf_category_summary;
-    if (!leaf) continue;
-    const name = leaf.label || '';
-    const value = numVal(leaf);
-    if (!name || value === 0) continue;
-    const type = r.ytd_details?.hover?.entity?.category?.type
-      || (leaf.money_flow?.business_flow === 'Outbound' ? 'Expense' : 'Income');
-    if (type === 'Expense') expenseLines.push({ name, amount: Math.abs(value) });
-    else if (type === 'Income') incomeLines.push({ name, amount: Math.abs(value) });
-  }
+  const incomeSections  = [incomeSec, otherIncSec].filter(Boolean);
+  const expenseSections = [cogsSec, opExSec, otherExpSec].filter(Boolean);
 
-  return {
-    totalIncome,
-    totalExpenses,
-    netIncome: netRow ? numVal(netRow.section_summary) : totalIncome - totalExpenses,
-    expenseLines,
-    // Grouped variants kept for UI contract parity (flat -> single-level groups).
-    groupedExpenseLines: expenseLines.map(l => ({ ...l, children: [] })),
-    groupedIncomeLines: incomeLines.map(l => ({ ...l, children: [] })),
-  };
+  const incomeLines  = incomeSections.reduce((acc, s) => collectLeaves(s, acc), []);
+  const expenseLines = expenseSections.reduce((acc, s) => collectLeaves(s, acc), []);
+
+  const groupedIncomeLines  = incomeSections.flatMap(s => childrenOf(s).map(toGroup));
+  const groupedExpenseLines = expenseSections.flatMap(s => childrenOf(s).map(toGroup));
+
+  return { totalIncome, totalExpenses, netIncome, expenseLines, incomeLines, groupedExpenseLines, groupedIncomeLines };
 }
 
 // Param names per the Digits OpenAPI: startDate, endDate, interval (camelCase).
