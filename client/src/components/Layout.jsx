@@ -152,6 +152,25 @@ function Toggle({ checked, onChange, label }) {
   );
 }
 
+function Clock() {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const date = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted" title={now.toLocaleString()}>
+      <span>{date}</span>
+      <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--c-dim)' }}>{time}</span>
+    </div>
+  );
+}
+
 export default function Layout({ onLogout }) {
   const [activeTab, setActiveTab] = useState('overview');
   const { theme, toggleTheme, isDemo, toggleDemo } = useApp();
@@ -204,6 +223,11 @@ export default function Layout({ onLogout }) {
 
         {/* Right controls */}
         <div className="flex items-center gap-4">
+          {/* Live date + time */}
+          <Clock />
+
+          <span className="h-4 w-px" style={{ backgroundColor: 'var(--c-border)' }} />
+
           {/* Light / Dark toggle */}
           <div className="flex items-center gap-1.5">
             <Moon size={11} className="text-muted flex-shrink-0" />
