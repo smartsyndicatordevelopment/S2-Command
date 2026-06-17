@@ -235,57 +235,73 @@ router.get('/pnl/monthly', async (req, res) => {
   }
 });
 
-// ─── Software subscriptions (Digits category subtype) ─────────────────────────
+// ─── Ledger transaction queries (entries/query) ───────────────────────────────
 //
-// Digits classifies software spend under the BusinessApplicationsAndSoftware
-// category subtype, so we can query it directly instead of regex-matching account
-// names. Uses POST /v1/ledger/entries/query. Response shape is verified against the
-// live API on first connection; until then this returns an empty list on any
-// mismatch so the Financials view degrades gracefully rather than erroring.
+// POST /v1/ledger/entries/query with body { filters, limit, cursor }. Results come
+// back under entryDetails[], each { transactionId, date, entry: { amount:{amount,
+// code}, description, category:{name,type}, counterparty:{name} } }. amount.amount
+// is in MINOR UNITS (cents). Pagination is cursor-based (next.cursor / next.more).
+async function digitsQueryEntries(filters, maxPages = 6) {
+  const all = [];
+  let cursor;
+  for (let i = 0; i < maxPages; i++) {
+    const body = { filters, limit: 1000, ...(cursor ? { cursor } : {}) };
+    const data = await withRetry(() => digitsPost('/v1/ledger/entries/query', body));
+    const details = Array.isArray(data?.entryDetails) ? data.entryDetails : [];
+    all.push(...details);
+    if (!data?.next?.more || !data?.next?.cursor) break;
+    cursor = data.next.cursor;
+  }
+  return all;
+}
 
-function ymStr(d) { return d.toISOString().split('T')[0]; }
+const EXPENSE_CATEGORY_TYPES = ['Expenses', 'CostOfGoodsSold', 'OtherExpenses'];
+const SOFTWARE_RE  = /software|saas|subscription|\bapps?\b|cloud|platform|\btool/i;
+const MARKETING_RE = /advertis|marketing|promo|social media|ad spend|\bads\b/i;
+
+// Group expense entries matching a category-name pattern into per-vendor rollups.
+function rollupVendors(details, pattern) {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+  const vendorMonths = {};
+  const vendor30d = {};
+  for (const ed of details) {
+    const e = ed.entry || {};
+    const catName = e.category?.name || '';
+    if (!pattern.test(catName)) continue;
+    const vendor = e.counterparty?.name || e.description || catName || 'Unknown';
+    const amount = Math.abs((e.amount?.amount ?? 0) / 100);
+    const dateStr = (ed.date || '').split('T')[0];
+    if (!dateStr || !(amount > 0)) continue;
+    const month = dateStr.substring(0, 7);
+    vendorMonths[vendor] = vendorMonths[vendor] || {};
+    vendorMonths[vendor][month] = (vendorMonths[vendor][month] || 0) + amount;
+    if (new Date(dateStr) >= thirtyDaysAgo) vendor30d[vendor] = (vendor30d[vendor] || 0) + amount;
+  }
+  const vendors = Object.entries(vendorMonths).map(([name, byMonth]) => {
+    const total = Object.values(byMonth).reduce((s, a) => s + a, 0);
+    const months = Object.keys(byMonth).length;
+    return { name, monthlyAvg: total / 12, freq: months > 1 ? 'Monthly' : 'Annual', count: months, annualEst: total, active: true };
+  }).filter(v => v.monthlyAvg >= 1).sort((a, b) => b.monthlyAvg - a.monthlyAvg);
+  const vendors30d = Object.entries(vendor30d).map(([name, total]) => (
+    { name, monthlyAvg: total, freq: 'Monthly', count: 1, annualEst: total * 12, active: true }
+  )).filter(v => v.monthlyAvg >= 1).sort((a, b) => b.monthlyAvg - a.monthlyAvg);
+  return { vendors, vendors30d };
+}
 
 router.get('/software-subscriptions', async (req, res) => {
   if (!digitsConfigured()) return res.json({ vendors: [], vendors30d: [], notConfigured: true });
 
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-  const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
 
   try {
-    const result = await withRetry(() =>
-      digitsPost('/v1/ledger/entries/query', {
-        origin: { interval: 'Month', year: start.getFullYear(), index: start.getMonth() + 1, interval_count: 12 },
-        filter: { category_subtypes: ['BusinessApplicationsAndSoftware'], category_types: { types: ['Expenses'] } },
-        pagination: { offset: 0, limit: 1000 },
-      })
-    );
-
-    const entries = result?.entries || result?.transactions || result?.rows || [];
-    const vendorMonths = {};
-    const vendor30d = {};
-    for (const e of entries) {
-      const name = e.party?.name || e.partyName || e.description || e.memo || 'Unknown';
-      const occurredSec = e.occurred_at?.seconds || e.occurredAt?.seconds;
-      const date = occurredSec ? new Date(occurredSec * 1000) : null;
-      const amount = Math.abs(e.amount?.value ?? e.money_flow?.value ?? 0);
-      if (!date || !(amount > 0)) continue;
-      const month = ymStr(date).substring(0, 7);
-      vendorMonths[name] = vendorMonths[name] || {};
-      vendorMonths[name][month] = (vendorMonths[name][month] || 0) + amount;
-      if (date >= thirtyDaysAgo) vendor30d[name] = (vendor30d[name] || 0) + amount;
-    }
-
-    const vendors = Object.entries(vendorMonths).map(([name, byMonth]) => {
-      const total = Object.values(byMonth).reduce((s, a) => s + a, 0);
-      return { name, monthlyAvg: total / 12, freq: Object.keys(byMonth).length > 1 ? 'Monthly' : 'Annual', count: Object.keys(byMonth).length, annualEst: total, active: true };
-    }).filter(v => v.monthlyAvg >= 1).sort((a, b) => b.monthlyAvg - a.monthlyAvg);
-
-    const vendors30d = Object.entries(vendor30d).map(([name, total]) => (
-      { name, monthlyAvg: total, freq: 'Monthly', count: 1, annualEst: total * 12, active: true }
-    )).filter(v => v.monthlyAvg >= 1).sort((a, b) => b.monthlyAvg - a.monthlyAvg);
-
-    res.json({ vendors, vendors30d });
+    const details = await digitsQueryEntries({
+      occurredAfter: start.toISOString(),
+      occurredBefore: now.toISOString(),
+      categoryTypes: EXPENSE_CATEGORY_TYPES,
+    });
+    res.json(rollupVendors(details, SOFTWARE_RE));
   } catch (err) {
     console.error('Digits /software-subscriptions error:', err.message);
     // Graceful empty result -- keep the Financials view stable.
@@ -343,26 +359,24 @@ router.get('/marketing-spend', async (req, res) => {
   const fbSpend = await getFbSpend(rawDays);
   const fbSource = fbSpend !== null;
 
-  // Supplement with any non-ad marketing spend tracked in Digits (SalesAndMarketing).
+  // Supplement with any non-ad marketing spend tracked in Digits.
   let digitsSpend = 0;
   const marketingAccounts = [];
   if (digitsConfigured()) {
     try {
-      const startDate = new Date(start);
-      const result = await withRetry(() =>
-        digitsPost('/v1/ledger/entries/query', {
-          origin: { interval: 'Month', year: startDate.getFullYear(), index: startDate.getMonth() + 1, interval_count: 12 },
-          filter: { category_subtypes: ['SalesAndMarketing'], category_types: { types: ['Expenses'] } },
-          pagination: { offset: 0, limit: 1000 },
-        })
-      );
-      const entries = result?.entries || result?.transactions || result?.rows || [];
-      for (const e of entries) {
-        const amount = Math.abs(e.amount?.value ?? e.money_flow?.value ?? 0);
+      const details = await digitsQueryEntries({
+        occurredAfter: new Date(start).toISOString(),
+        occurredBefore: now.toISOString(),
+        categoryTypes: EXPENSE_CATEGORY_TYPES,
+      });
+      for (const ed of details) {
+        const e = ed.entry || {};
+        const catName = e.category?.name || '';
+        if (!MARKETING_RE.test(catName)) continue;
+        const amount = Math.abs((e.amount?.amount ?? 0) / 100);
         if (amount > 0) {
           digitsSpend += amount;
-          const name = e.category?.name || e.party?.name;
-          if (name && !marketingAccounts.includes(name)) marketingAccounts.push(name);
+          if (catName && !marketingAccounts.includes(catName)) marketingAccounts.push(catName);
         }
       }
     } catch (err) {
