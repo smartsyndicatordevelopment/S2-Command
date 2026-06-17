@@ -6,7 +6,7 @@ const path = require('path');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
-const { runMigrations } = require('./lib/db');
+const { runMigrations, getPool } = require('./lib/db');
 const { startSyncRunner } = require('./lib/syncEngine');
 const { warmAll: warmMetrics } = require('./lib/metricsCache');
 
@@ -65,7 +65,28 @@ if (!isDev && !process.env.SESSION_SECRET) {
   throw new Error('SESSION_SECRET environment variable is required in production');
 }
 
+// Persist sessions in Postgres so logins survive deploys (Railway's memory and
+// filesystem are ephemeral, so the default in-memory store logs everyone out on
+// every restart). Fall back to the in-memory store if the PG store can't be set
+// up -- a session-store problem must never lock users out of the whole app.
+let sessionStore;
+if (process.env.DATABASE_URL) {
+  try {
+    const PgSession = require('connect-pg-simple')(session);
+    sessionStore = new PgSession({
+      pool: getPool(),
+      tableName: 'user_sessions',
+      createTableIfMissing: true,
+    });
+    sessionStore.on('error', (err) => console.error('PG session store error:', err.message));
+  } catch (err) {
+    console.error('PG session store init failed -- using in-memory sessions:', err.message);
+    sessionStore = undefined;
+  }
+}
+
 app.use(session({
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'dev-secret-not-for-production',
   resave: false,
   saveUninitialized: false,
