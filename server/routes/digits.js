@@ -443,19 +443,25 @@ function buildCashflow(statement) {
   const HUB = 'Total Income';
   nodeId(HUB, 'hub');
 
-  // Income side: positive leaves flow into the hub; contra leaves net out as an outflow.
+  // Income side: positive leaves (largest first) flow into the hub; contra leaves
+  // (discounts/refunds) net out as an outflow so the two sides balance.
   let contra = 0;
   const incomeLeaves = [];
   [incomeSec, otherIncSec].filter(Boolean).forEach(s => collectSignedLeaves(s, incomeLeaves));
-  for (const leaf of incomeLeaves) {
-    if (leaf.amount > 0) {
-      links.push({ source: nodeId(leaf.name, 'income'), target: nodeId(HUB, 'hub'), value: round2(leaf.amount) });
-    } else {
-      contra += -leaf.amount;
-    }
+  incomeLeaves.filter(l => l.amount < 0).forEach(l => { contra += -l.amount; });
+  const positiveIncome = incomeLeaves.filter(l => l.amount > 0).sort((a, b) => b.amount - a.amount);
+  for (const leaf of positiveIncome) {
+    links.push({ source: nodeId(leaf.name, 'income'), target: nodeId(HUB, 'hub'), value: round2(leaf.amount) });
   }
 
-  // Expense side: hub -> section -> leaf categories.
+  // Net Profit FIRST among the hub's outflows. With the deterministic layout
+  // (iterations: 0) the first node in a column renders at the top, so this pins
+  // Net Profit to the top of the right side.
+  if (netIncome > 0) {
+    links.push({ source: nodeId(HUB, 'hub'), target: nodeId('Net Profit', 'profit'), value: round2(netIncome) });
+  }
+
+  // Expense side: hub -> section -> leaf categories (largest first).
   const sections = [
     { node: cogsSec,     label: 'Cost of Revenue' },
     { node: opExSec,     label: 'Operating Expenses' },
@@ -463,7 +469,7 @@ function buildCashflow(statement) {
   ].filter(s => s.node);
 
   for (const { node, label } of sections) {
-    const leaves = collectLeaves(node, []).filter(l => l.amount > 0);
+    const leaves = collectLeaves(node, []).filter(l => l.amount > 0).sort((a, b) => b.amount - a.amount);
     const total = leaves.reduce((s, l) => s + l.amount, 0);
     if (total <= 0) continue;
     links.push({ source: nodeId(HUB, 'hub'), target: nodeId(label, 'group'), value: round2(total) });
@@ -472,11 +478,9 @@ function buildCashflow(statement) {
     }
   }
 
+  // Discounts/refunds outflow last (bottom of the right side).
   if (contra > 0) {
     links.push({ source: nodeId(HUB, 'hub'), target: nodeId('Discounts & Refunds', 'expense'), value: round2(contra) });
-  }
-  if (netIncome > 0) {
-    links.push({ source: nodeId(HUB, 'hub'), target: nodeId('Net Profit', 'profit'), value: round2(netIncome) });
   }
 
   return { nodes, links, totalIncome, totalExpenses, netIncome, netLoss: netIncome < 0 };
@@ -485,17 +489,38 @@ function buildCashflow(statement) {
 router.get('/cashflow', async (req, res) => {
   if (!digitsConfigured()) return res.json({ nodes: [], links: [], notConfigured: true });
 
-  const currentYear = new Date().getFullYear();
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const today = now.toISOString().split('T')[0];
+
   const year = parseInt(req.query.year, 10) || currentYear;
-  const today = new Date().toISOString().split('T')[0];
-  const startDate = `${year}-01-01`;
-  const endDate = year === currentYear ? today : `${year}-12-31`;
+  const month = parseInt(req.query.month, 10); // 1-12, or NaN for full year
+  const pad = (n) => String(n).padStart(2, '0');
+
+  let interval, startDate, endDate;
+  if (month >= 1 && month <= 12) {
+    interval = 'Month';
+    startDate = `${year}-${pad(month)}-01`;
+    const isCurrentMonth = year === currentYear && month === currentMonth;
+    endDate = isCurrentMonth ? today : `${year}-${pad(month)}-${pad(new Date(year, month, 0).getDate())}`;
+  } else {
+    interval = 'Year';
+    startDate = `${year}-01-01`;
+    endDate = year === currentYear ? today : `${year}-12-31`;
+  }
 
   try {
     const statement = await withRetry(() =>
-      digitsGet('/v1/ledger/statement/profit-and-loss', { interval: 'Year', startDate, endDate })
+      digitsGet('/v1/ledger/statement/profit-and-loss', { interval, startDate, endDate })
     );
-    res.json({ year, startDate, endDate, ...buildCashflow(statement) });
+    res.json({
+      year,
+      month: month >= 1 && month <= 12 ? month : null,
+      startDate,
+      endDate,
+      ...buildCashflow(statement),
+    });
   } catch (err) {
     console.error('Digits /cashflow error:', err.message);
     res.status(500).json({ error: 'Failed to build cash flow' });

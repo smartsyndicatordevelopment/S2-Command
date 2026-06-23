@@ -3,7 +3,9 @@ import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from 'recharts
 import { useApi } from '../hooks/useApi';
 
 const CURRENT_YEAR = new Date().getFullYear();
+const CURRENT_MONTH = new Date().getMonth() + 1;
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2, CURRENT_YEAR - 3];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const NODE_COLORS = {
   income:  '#5c3ff4',
@@ -75,7 +77,12 @@ function Stat({ label, value, color }) {
 
 export default function CashFlow() {
   const [year, setYear] = useState(CURRENT_YEAR);
-  const { data, loading, error } = useApi(`/api/cashflow?year=${year}`);
+  const [month, setMonth] = useState(0); // 0 = Full Year, 1-12 = month
+
+  // The current year only has months up to this month; clamp so we never request a future month.
+  const maxMonth = year === CURRENT_YEAR ? CURRENT_MONTH : 12;
+  const m = month > maxMonth ? 0 : month;
+  const { data, loading, error } = useApi(`/api/cashflow?year=${year}${m ? `&month=${m}` : ''}`);
 
   const nodes = data?.nodes || [];
   const links = data?.links || [];
@@ -92,7 +99,7 @@ export default function CashFlow() {
             Revenue and expense flow -- live from Digits{data?.startDate ? ` · ${data.startDate} to ${data.endDate}` : ''}
           </p>
         </div>
-        <div className="flex gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {YEARS.map(y => (
             <button
               key={y}
@@ -107,6 +114,17 @@ export default function CashFlow() {
               {y}
             </button>
           ))}
+          <select
+            value={m}
+            onChange={e => setMonth(Number(e.target.value))}
+            className="text-xs px-2 py-1.5 rounded outline-none"
+            style={{ backgroundColor: 'var(--c-subtle-5)', border: '1px solid var(--c-border)', color: 'var(--c-text-primary)' }}
+          >
+            <option value={0}>Full Year</option>
+            {MONTHS.slice(0, maxMonth).map((name, i) => (
+              <option key={i} value={i + 1}>{name} {year}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -154,6 +172,7 @@ export default function CashFlow() {
               nodePadding={24}
               nodeWidth={12}
               linkCurvature={0.5}
+              iterations={0}
               margin={{ top: 30, right: 210, bottom: 20, left: 180 }}
             >
               <Tooltip
