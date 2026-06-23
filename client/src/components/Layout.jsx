@@ -18,6 +18,7 @@ import FBAds from '../tabs/FBAds';
 import MakeAgent from '../tabs/MakeAgent';
 import DigitsAgent from '../tabs/DigitsAgent';
 import Settings from '../tabs/Settings';
+import CashFlow from '../tabs/CashFlow';
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview' },
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
     label: 'Financials',
     children: [
       { id: 'financials', label: 'Financials' },
+      { id: 'cashflow', label: 'Cash Flow' },
       { id: 'customers', label: 'Customers' },
     ],
   },
@@ -59,6 +61,7 @@ const NAV_ITEMS = [
 const TAB_COMPONENTS = {
   overview:   Overview,
   financials: Financials,
+  cashflow:   CashFlow,
   targets:    Targets,
   customers:  Customers,
   sales:      SalesAds,

@@ -396,6 +396,112 @@ router.get('/marketing-spend', async (req, res) => {
   res.json({ spend: totalSpend, marketingAccounts: sources, startDate: start, endDate: end });
 });
 
+// ─── Cash flow (Sankey) ───────────────────────────────────────────────────────
+//
+// Builds a Sankey-ready { nodes, links } graph from the P&L tree:
+//   income leaves --> Total Income --> { expense sections, Discounts, Net Profit }
+//   expense section --> its leaf categories
+// Contra-revenue leaves (e.g. Discounts/Refunds, stored negative) are modeled as
+// an outflow from Total Income so the inflow and outflow sides balance exactly.
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// Like collectLeaves but keeps the signed dollar amount (income contras are negative).
+function collectSignedLeaves(node, out) {
+  const kids = childrenOf(node);
+  if (!kids.length) {
+    const amount = dollars(node);
+    if (node?.label && amount !== 0) out.push({ name: node.label, amount });
+  } else {
+    for (const c of kids) collectSignedLeaves(c, out);
+  }
+  return out;
+}
+
+function buildCashflow(statement) {
+  const rows = Array.isArray(statement?.rows) ? statement.rows : [];
+
+  const incomeSec   = firstByKind(rows, 'Income');
+  const otherIncSec = firstByKind(rows, 'OtherIncome');
+  const cogsSec     = firstByKind(rows, 'CostOfGoodsSold');
+  const opExSec     = firstByKind(rows, 'OperatingExpenses');
+  const otherExpSec = firstByKind(rows, 'OtherExpenses');
+  const netSec      = firstByKind(rows, 'NetIncome');
+
+  const totalIncome   = dollars(incomeSec) + dollars(otherIncSec);
+  const totalExpenses = dollars(cogsSec) + dollars(opExSec) + dollars(otherExpSec);
+  const netIncome     = netSec ? dollars(netSec) : totalIncome - totalExpenses;
+
+  const nodes = [];
+  const links = [];
+  const index = {};
+  const nodeId = (name, kind) => {
+    if (index[name] === undefined) { index[name] = nodes.length; nodes.push({ name, kind }); }
+    return index[name];
+  };
+
+  const HUB = 'Total Income';
+  nodeId(HUB, 'hub');
+
+  // Income side: positive leaves flow into the hub; contra leaves net out as an outflow.
+  let contra = 0;
+  const incomeLeaves = [];
+  [incomeSec, otherIncSec].filter(Boolean).forEach(s => collectSignedLeaves(s, incomeLeaves));
+  for (const leaf of incomeLeaves) {
+    if (leaf.amount > 0) {
+      links.push({ source: nodeId(leaf.name, 'income'), target: nodeId(HUB, 'hub'), value: round2(leaf.amount) });
+    } else {
+      contra += -leaf.amount;
+    }
+  }
+
+  // Expense side: hub -> section -> leaf categories.
+  const sections = [
+    { node: cogsSec,     label: 'Cost of Revenue' },
+    { node: opExSec,     label: 'Operating Expenses' },
+    { node: otherExpSec, label: 'Other Expenses' },
+  ].filter(s => s.node);
+
+  for (const { node, label } of sections) {
+    const leaves = collectLeaves(node, []).filter(l => l.amount > 0);
+    const total = leaves.reduce((s, l) => s + l.amount, 0);
+    if (total <= 0) continue;
+    links.push({ source: nodeId(HUB, 'hub'), target: nodeId(label, 'group'), value: round2(total) });
+    for (const leaf of leaves) {
+      links.push({ source: nodeId(label, 'group'), target: nodeId(leaf.name, 'expense'), value: round2(leaf.amount) });
+    }
+  }
+
+  if (contra > 0) {
+    links.push({ source: nodeId(HUB, 'hub'), target: nodeId('Discounts & Refunds', 'expense'), value: round2(contra) });
+  }
+  if (netIncome > 0) {
+    links.push({ source: nodeId(HUB, 'hub'), target: nodeId('Net Profit', 'profit'), value: round2(netIncome) });
+  }
+
+  return { nodes, links, totalIncome, totalExpenses, netIncome, netLoss: netIncome < 0 };
+}
+
+router.get('/cashflow', async (req, res) => {
+  if (!digitsConfigured()) return res.json({ nodes: [], links: [], notConfigured: true });
+
+  const currentYear = new Date().getFullYear();
+  const year = parseInt(req.query.year, 10) || currentYear;
+  const today = new Date().toISOString().split('T')[0];
+  const startDate = `${year}-01-01`;
+  const endDate = year === currentYear ? today : `${year}-12-31`;
+
+  try {
+    const statement = await withRetry(() =>
+      digitsGet('/v1/ledger/statement/profit-and-loss', { interval: 'Year', startDate, endDate })
+    );
+    res.json({ year, startDate, endDate, ...buildCashflow(statement) });
+  } catch (err) {
+    console.error('Digits /cashflow error:', err.message);
+    res.status(500).json({ error: 'Failed to build cash flow' });
+  }
+});
+
 // ─── Status ───────────────────────────────────────────────────────────────────
 
 router.get('/digits/status', (req, res) => {
