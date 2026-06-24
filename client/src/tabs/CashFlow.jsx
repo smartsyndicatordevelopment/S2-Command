@@ -7,6 +7,10 @@ const CURRENT_MONTH = new Date().getMonth() + 1;
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2, CURRENT_YEAR - 3];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+// Native <option> popups ignore most inherited styling -- set background/text
+// explicitly (theme-aware) so the dropdown list has proper contrast.
+const OPTION_STYLE = { backgroundColor: 'var(--c-card)', color: 'var(--c-text-primary)' };
+
 const NODE_COLORS = {
   income:       '#5c3ff4',
   hub:          '#6b7280',
@@ -128,9 +132,9 @@ export default function CashFlow() {
             className="text-xs px-2 py-1.5 rounded outline-none"
             style={{ backgroundColor: 'var(--c-subtle-5)', border: '1px solid var(--c-border)', color: 'var(--c-text-primary)' }}
           >
-            <option value={0}>Full Year</option>
+            <option value={0} style={OPTION_STYLE}>Full Year</option>
             {MONTHS.slice(0, maxMonth).map((name, i) => (
-              <option key={i} value={i + 1}>{name} {year}</option>
+              <option key={i} value={i + 1} style={OPTION_STYLE}>{name} {year}</option>
             ))}
           </select>
         </div>
