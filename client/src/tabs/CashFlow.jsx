@@ -8,17 +8,19 @@ const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2, CURRENT_YEAR - 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const NODE_COLORS = {
-  income:  '#5c3ff4',
-  hub:     '#6b7280',
-  group:   '#d98a3d',
-  expense: '#d98a3d',
-  profit:  '#22c55e',
+  income:       '#5c3ff4',
+  hub:          '#6b7280',
+  group:        '#d98a3d',
+  expense:      '#d98a3d',
+  profitBucket: '#22c55e',
+  profit:       '#22c55e',
 };
 const LINK_COLORS = {
-  hub:     '#5c3ff4', // income -> Total Income
-  group:   '#d98a3d', // Total Income -> expense section
-  expense: '#d98a3d', // section -> category (and discounts)
-  profit:  '#22c55e', // Total Income -> Net Profit
+  hub:          '#5c3ff4', // income -> Total Income
+  group:        '#d98a3d', // Total Income -> expense section
+  expense:      '#d98a3d', // section -> category (and discounts)
+  profitBucket: '#22c55e', // Total Income -> profit pass-through
+  profit:       '#22c55e', // pass-through -> Net Profit
 };
 
 const fmt = (n) =>
@@ -29,6 +31,12 @@ function SankeyNode({ x, y, width, height, payload }) {
   const color = NODE_COLORS[kind] || '#9aa0a6';
   const value = payload.value || 0;
   const leftCol = payload.depth === 0;
+
+  // Profit pass-through: a bare green bar, no label (the labeled "Net Profit"
+  // node sits one column to its right).
+  if (kind === 'profitBucket') {
+    return <Layer><Rectangle x={x} y={y} width={width} height={height} fill={color} fillOpacity={0.9} radius={2} /></Layer>;
+  }
 
   return (
     <Layer>

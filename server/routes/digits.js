@@ -454,11 +454,16 @@ function buildCashflow(statement) {
     links.push({ source: nodeId(leaf.name, 'income'), target: nodeId(HUB, 'hub'), value: round2(leaf.amount) });
   }
 
-  // Net Profit FIRST among the hub's outflows. With the deterministic layout
-  // (iterations: 0) the first node in a column renders at the top, so this pins
-  // Net Profit to the top of the right side.
+  // Net Profit FIRST among the hub's outflows so it pins to the top of the right
+  // side (deterministic layout renders the first node in a column at the top).
+  // Route it through a short pass-through bucket so it spans the SAME two right
+  // columns the expense sections do -- otherwise Net Profit (a sink) gets right-
+  // aligned and its long diagonal band overlaps the expense-section flows.
   if (netIncome > 0) {
-    links.push({ source: nodeId(HUB, 'hub'), target: nodeId('Net Profit', 'profit'), value: round2(netIncome) });
+    const bucket = nodeId('profit-bucket', 'profitBucket'); // col 2, rendered unlabeled
+    const leaf   = nodeId('Net Profit', 'profit');          // col 3, labeled
+    links.push({ source: nodeId(HUB, 'hub'), target: bucket, value: round2(netIncome) });
+    links.push({ source: bucket, target: leaf, value: round2(netIncome) });
   }
 
   // Expense side: hub -> section -> leaf categories (largest first).
