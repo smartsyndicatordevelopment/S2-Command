@@ -255,6 +255,53 @@ async function clickupGet(endpoint) {
   }
 }
 
+async function clickupPost(endpoint, body) {
+  const apiKey = process.env.CLICKUP_API_KEY;
+  if (!apiKey) throw new Error('CLICKUP_API_KEY not configured');
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch(`https://api.clickup.com/api/v2${endpoint}`, {
+        method: 'POST',
+        headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(`ClickUp API ${r.status}: ${data?.err || JSON.stringify(data).slice(0, 200)}`);
+      return data;
+    } catch (err) {
+      if (i === 2) throw err;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+}
+
+// Lists + members across the workspace, so the analyst can resolve a list_id and
+// assignee user ids before creating a task (rather than guessing).
+async function toolGetClickupWorkspace() {
+  const teamId = process.env.CLICKUP_TEAM_ID;
+  if (!teamId) throw new Error('CLICKUP_TEAM_ID not configured');
+
+  const teamData = await clickupGet('/team');
+  const team = (teamData.teams || []).find(t => String(t.id) === String(teamId)) || teamData.teams?.[0];
+  const members = (team?.members || [])
+    .map(m => ({ id: m.user?.id, username: m.user?.username, email: m.user?.email }))
+    .filter(m => m.id);
+
+  const spacesData = await clickupGet(`/team/${teamId}/space`);
+  const spaces = spacesData.spaces || [];
+  const lists = [];
+  for (const space of spaces) {
+    const [folderless, folders] = await Promise.all([
+      clickupGet(`/space/${space.id}/list`).catch(() => ({ lists: [] })),
+      clickupGet(`/space/${space.id}/folder`).catch(() => ({ folders: [] })),
+    ]);
+    for (const l of (folderless.lists || [])) lists.push({ id: l.id, name: l.name, space: space.name, folder: null });
+    for (const f of (folders.folders || [])) for (const l of (f.lists || [])) lists.push({ id: l.id, name: l.name, space: space.name, folder: f.name });
+  }
+
+  return { members, lists: lists.slice(0, 200) };
+}
+
 async function toolGetClickupTasks(overdueOnly) {
   const teamId = process.env.CLICKUP_TEAM_ID;
   if (!teamId) throw new Error('CLICKUP_TEAM_ID not configured');
@@ -558,6 +605,27 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_clickup_workspace',
+    description: 'List ClickUp lists (id, name, space, folder) and team members (id, username, email). ALWAYS call this before create_clickup_task to get the exact list_id to create the task in and the user ids of any assignees -- never guess ids.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'create_clickup_task',
+    description: 'Create a new ClickUp task and optionally assign it. Requires user approval before it runs -- it returns a pending approval, so do NOT assume it executed. Call get_clickup_workspace first to resolve list_id and assignee user ids. Always include a clear preview_description naming the task, the list, and the assignee(s).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        list_id:             { type: 'string', description: 'Id of the ClickUp list to create the task in (from get_clickup_workspace).' },
+        name:                { type: 'string', description: 'Task name/title.' },
+        assignee_ids:        { type: 'array', items: { type: 'number' }, description: 'ClickUp user ids to assign (from get_clickup_workspace members).' },
+        description:         { type: 'string', description: 'Optional task description / details.' },
+        due_date:            { type: 'string', description: 'Optional due date in YYYY-MM-DD.' },
+        preview_description: { type: 'string', description: 'Plain-English summary shown to Brandon for approval, e.g. "Create task \'Decom R. and J. Sebastian\' in Operations, assigned to Jes Belang".' },
+      },
+      required: ['list_id', 'name', 'preview_description'],
+    },
+  },
+  {
     name: 'toggle_fb_campaign',
     description: 'Pause or activate a Facebook ad campaign. Requires user approval before executing -- do not call this without confirming intent. Use get_fb_campaigns first to find the campaign ID.',
     input_schema: {
@@ -585,6 +653,7 @@ async function executeTool(name, input) {
     case 'get_ghl_contacts':   return await toolGetGhlContacts();
     case 'get_make_overview':  return await toolGetMakeOverview();
     case 'get_clickup_tasks':  return await toolGetClickupTasks(input.overdue_only);
+    case 'get_clickup_workspace': return await toolGetClickupWorkspace();
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }
@@ -633,6 +702,8 @@ function buildSystemPrompt(ctx) {
     ``,
     `ClickUp (tasks and projects):`,
     `- get_clickup_tasks(overdue_only) -- open tasks with status, due date, assignee, list, plus totalOpen and overdueCount. Pass overdue_only=true for just-past-due tasks.`,
+    `- get_clickup_workspace        -- lists (id, name, space, folder) and team members (id, username, email)`,
+    `- create_clickup_task(list_id, name, assignee_ids, due_date, description, preview_description) -- create and assign a task. ALWAYS call get_clickup_workspace FIRST to resolve the list_id and assignee user ids by name. Returns a pending approval -- do not assume it executed. If the list or assignee is ambiguous, ask Brandon which one.`,
     ``,
     `RULE: For any question requiring accurate numbers, call the appropriate tool first. Do not guess from the snapshot above.`,
     ``,
@@ -700,15 +771,16 @@ router.post('/chat', async (req, res) => {
 
         if (response.stop_reason === 'tool_use') {
           // Intercept write tools -- return pending_action for client-side approval
-          const writeBlock = response.content.find(b => b.type === 'tool_use' && b.name === 'toggle_fb_campaign');
+          const WRITE_TOOLS = ['toggle_fb_campaign', 'create_clickup_task'];
+          const writeBlock = response.content.find(b => b.type === 'tool_use' && WRITE_TOOLS.includes(b.name));
           if (writeBlock) {
             const claudeText = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
-            const { campaign_id, status, preview_description } = writeBlock.input;
+            const { preview_description, ...rest } = writeBlock.input;
             return res.json({
               type:    'pending_action',
               message: claudeText,
               preview: preview_description,
-              action:  { type: 'toggle_fb_campaign', campaign_id, status },
+              action:  { type: writeBlock.name, ...rest },
             });
           }
 
@@ -781,6 +853,29 @@ router.post('/chat/execute', async (req, res) => {
         if (i === 2) return res.status(502).json({ error: err.message });
         await new Promise(r => setTimeout(r, 1000 * (i + 1)));
       }
+    }
+  }
+
+  if (action.type === 'create_clickup_task') {
+    const { list_id, name, assignee_ids, description, due_date } = action;
+    if (!list_id || !name) return res.status(400).json({ error: 'list_id and name required' });
+
+    const body = { name };
+    if (Array.isArray(assignee_ids) && assignee_ids.length) body.assignees = assignee_ids;
+    if (description) body.description = description;
+    if (due_date) {
+      const ts = Date.parse(due_date);
+      if (!isNaN(ts)) { body.due_date = ts; body.due_date_time = false; }
+    }
+
+    try {
+      const data = await clickupPost(`/list/${list_id}/task`, body);
+      if (data?.id) {
+        return res.json({ reply: `Task created: "${data.name}"${data.url ? ` -- ${data.url}` : ''}` });
+      }
+      return res.status(400).json({ error: data?.err || 'ClickUp did not return a task id' });
+    } catch (err) {
+      return res.status(502).json({ error: `Failed to create task: ${err.message}` });
     }
   }
 
