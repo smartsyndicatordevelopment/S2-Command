@@ -507,6 +507,103 @@ async function toolGetSalesTax(month) {
   };
 }
 
+// -- Generic platform access (orchestrator) --
+//
+// One helper per connected platform, each fixed to that platform's API host and
+// auth so the model can only reach known systems (it supplies the path, never the
+// host). GETs are reads; POST/PUT/PATCH/DELETE are writes and are gated behind the
+// approval card before they run. This is what lets the analyst do everything the
+// dedicated GHL / ClickUp / Make / Facebook / Digits agents can do.
+
+async function ghlApi(method, endpoint, body) {
+  const apiKey = process.env.GHL_API_KEY;
+  const locationId = process.env.GHL_LOCATION_ID;
+  if (!apiKey) throw new Error('GHL_API_KEY not configured');
+  const m = method.toUpperCase();
+  let url = `https://services.leadconnectorhq.com${endpoint}`;
+  if (m === 'GET' && locationId && !/[?&]locationId=/.test(endpoint)) {
+    url += (endpoint.includes('?') ? '&' : '?') + `locationId=${encodeURIComponent(locationId)}`;
+  }
+  const opts = { method: m, headers: { Authorization: `Bearer ${apiKey}`, Version: '2021-07-28', 'Content-Type': 'application/json', Accept: 'application/json' } };
+  if (body && ['POST', 'PUT', 'PATCH'].includes(m)) {
+    if (locationId && body && typeof body === 'object' && body.locationId == null && body.location_id == null) body = { ...body, locationId };
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(url, opts);
+  const ct = r.headers.get('content-type') || '';
+  const data = ct.includes('application/json') ? await r.json() : { raw: await r.text() };
+  return { status: r.status, data };
+}
+
+async function clickupApi(method, endpoint, body) {
+  const apiKey = process.env.CLICKUP_API_KEY;
+  if (!apiKey) throw new Error('CLICKUP_API_KEY not configured');
+  const m = method.toUpperCase();
+  const opts = { method: m, headers: { Authorization: apiKey, 'Content-Type': 'application/json' } };
+  if (body && ['POST', 'PUT', 'PATCH'].includes(m)) opts.body = JSON.stringify(body);
+  const r = await fetch(`https://api.clickup.com/api/v2${endpoint}`, opts);
+  const data = await r.json().catch(() => ({}));
+  return { status: r.status, data };
+}
+
+async function makeApi(method, endpoint, body) {
+  const apiKey = process.env.MAKE_API_KEY;
+  const zone = (process.env.MAKE_ZONE || 'us1').toLowerCase();
+  if (!apiKey) throw new Error('MAKE_API_KEY not configured');
+  const m = method.toUpperCase();
+  const opts = { method: m, headers: { Authorization: `Token ${apiKey}`, 'Content-Type': 'application/json' } };
+  if (body && ['POST', 'PUT', 'PATCH'].includes(m)) opts.body = JSON.stringify(body);
+  const r = await fetch(`https://${zone}.make.com/api/v2${endpoint}`, opts);
+  const data = await r.json().catch(() => ({}));
+  return { status: r.status, data };
+}
+
+async function fbApi(method, path, body) {
+  const token = process.env.META_ACCESS_TOKEN;
+  if (!token) throw new Error('META_ACCESS_TOKEN not configured');
+  const m = method.toUpperCase();
+  let url = `https://graph.facebook.com/v21.0${path.startsWith('/') ? path : '/' + path}`;
+  const opts = { method: m, headers: { 'Content-Type': 'application/json' } };
+  if (m === 'GET') {
+    url += (path.includes('?') ? '&' : '?') + `access_token=${encodeURIComponent(token)}`;
+  } else {
+    opts.body = JSON.stringify({ ...(body || {}), access_token: token });
+  }
+  const r = await fetch(url, opts);
+  const data = await r.json().catch(() => ({}));
+  return { status: r.status, data };
+}
+
+async function digitsApi(method, endpoint, body) {
+  const { getToken } = require('../lib/digitsTokens');
+  const m = method.toUpperCase();
+  if (m !== 'GET' && m !== 'POST') throw new Error('Digits is read-only (GET, or POST for /v1/ledger/entries/query).');
+  const token = await getToken();
+  const opts = { method: m, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' } };
+  if (body && m === 'POST') opts.body = JSON.stringify(body);
+  const r = await fetch(`https://connect.digits.com${endpoint}`, opts);
+  const data = await r.json().catch(() => ({}));
+  return { status: r.status, data };
+}
+
+function platformApi(platform, method, endpoint, body) {
+  switch (platform) {
+    case 'ghl':     return ghlApi(method, endpoint, body);
+    case 'clickup': return clickupApi(method, endpoint, body);
+    case 'make':    return makeApi(method, endpoint, body);
+    case 'fb':      return fbApi(method, endpoint, body);
+    case 'digits':  return digitsApi(method, endpoint, body);
+    default: throw new Error(`Unknown platform: ${platform}`);
+  }
+}
+
+// A tool_use block that mutates data and must be approved before it runs.
+function isAnalystWrite(b) {
+  if (b.name === 'toggle_fb_campaign' || b.name === 'create_clickup_task') return true;
+  if (b.name === 'agent_api') return (b.input?.method || 'GET').toUpperCase() !== 'GET';
+  return false;
+}
+
 // -- Tool registry --
 
 const TOOLS = [
@@ -639,6 +736,21 @@ const TOOLS = [
       required: ['campaign_id', 'status', 'preview_description'],
     },
   },
+  {
+    name: 'agent_api',
+    description: 'Direct access to any connected platform API -- this lets you do ANYTHING the dedicated GHL, ClickUp, Make, Facebook Ads, and Digits agents can do, including writes. Use it for anything the specific tools above do not cover. method GET runs immediately (reads). method POST/PUT/PATCH/DELETE are WRITES: they return a pending approval card and only execute after Brandon approves -- never assume a write ran. Always include a specific preview_description for writes. Prefer the specific tools (get_pnl, get_ghl_pipeline, get_clickup_tasks, etc.) for common reads.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        platform: { type: 'string', enum: ['ghl', 'clickup', 'make', 'fb', 'digits'], description: 'Which connected system to call.' },
+        method:   { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], description: 'GET = read (runs now). POST/PUT/PATCH/DELETE = write (needs approval).' },
+        endpoint: { type: 'string', description: 'API path including any query string. GHL (base services.leadconnectorhq.com): /contacts/, /contacts/{id}, /conversations/messages (POST to send SMS/email), /opportunities/search. ClickUp (api.clickup.com/api/v2): /list/{listId}/task (POST create), /task/{taskId} (PUT update, DELETE), /team/{teamId}/task. Make (v2): /scenarios, /scenarios/{id} (PATCH/DELETE). Facebook Graph: /{campaignId} (POST to update status/budget), /act_{accountId}/campaigns. Digits (connect.digits.com): /v1/ledger/statement/balance-sheet?startDate=&endDate=&interval=Year, /v1/ledger/entries/query (POST).' },
+        body:     { type: 'object', description: 'JSON body for POST/PUT/PATCH (also Digits POST queries).' },
+        preview_description: { type: 'string', description: 'Required for writes. Plain-English summary of exactly what will change, with names/values.' },
+      },
+      required: ['platform', 'method', 'endpoint'],
+    },
+  },
 ];
 
 async function executeTool(name, input) {
@@ -654,6 +766,12 @@ async function executeTool(name, input) {
     case 'get_make_overview':  return await toolGetMakeOverview();
     case 'get_clickup_tasks':  return await toolGetClickupTasks(input.overdue_only);
     case 'get_clickup_workspace': return await toolGetClickupWorkspace();
+    case 'agent_api': {
+      // Only reads reach here -- writes are intercepted for approval before execution.
+      const method = (input.method || 'GET').toUpperCase();
+      if (method !== 'GET') throw new Error('Writes must be approved, not executed inline.');
+      return await platformApi(input.platform, 'GET', input.endpoint, null);
+    }
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }
@@ -705,7 +823,11 @@ function buildSystemPrompt(ctx) {
     `- get_clickup_workspace        -- lists (id, name, space, folder) and team members (id, username, email)`,
     `- create_clickup_task(list_id, name, assignee_ids, due_date, description, preview_description) -- create and assign a task. ALWAYS call get_clickup_workspace FIRST to resolve the list_id and assignee user ids by name. Returns a pending approval -- do not assume it executed. If the list or assignee is ambiguous, ask Brandon which one.`,
     ``,
+    `Anything else (orchestrator):`,
+    `- agent_api(platform, method, endpoint, body, preview_description) -- direct access to ghl, clickup, make, fb, or digits. Do anything the dedicated agents can, including writes (send SMS, create/update/delete contacts, tasks, opportunities, scenarios, campaigns). GET runs now; POST/PUT/PATCH/DELETE require Brandon's approval -- never assume a write executed. Use the specific tools above for common reads; use agent_api for everything else.`,
+    ``,
     `RULE: For any question requiring accurate numbers, call the appropriate tool first. Do not guess from the snapshot above.`,
+    `RULE: For any write/change, use the right tool (create_clickup_task, toggle_fb_campaign, or agent_api) and present it for approval. Confirm the target (which contact, task, campaign, list) before proposing. Never claim a change is done until the approval has executed.`,
     ``,
     `== STYLE ==`,
     `Answer directly and concisely. Show calculations when doing math. No filler. Brandon is a busy founder.`,
@@ -770,9 +892,8 @@ router.post('/chat', async (req, res) => {
         }
 
         if (response.stop_reason === 'tool_use') {
-          // Intercept write tools -- return pending_action for client-side approval
-          const WRITE_TOOLS = ['toggle_fb_campaign', 'create_clickup_task'];
-          const writeBlock = response.content.find(b => b.type === 'tool_use' && WRITE_TOOLS.includes(b.name));
+          // Intercept write actions -- return pending_action for client-side approval
+          const writeBlock = response.content.find(b => b.type === 'tool_use' && isAnalystWrite(b));
           if (writeBlock) {
             const claudeText = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
             const { preview_description, ...rest } = writeBlock.input;
@@ -876,6 +997,26 @@ router.post('/chat/execute', async (req, res) => {
       return res.status(400).json({ error: data?.err || 'ClickUp did not return a task id' });
     } catch (err) {
       return res.status(502).json({ error: `Failed to create task: ${err.message}` });
+    }
+  }
+
+  if (action.type === 'agent_api') {
+    const { platform, method, endpoint, body } = action;
+    if (!platform || !method || !endpoint) return res.status(400).json({ error: 'platform, method, endpoint required' });
+    if ((method || '').toUpperCase() === 'GET') return res.status(400).json({ error: 'GET is a read -- it does not need approval' });
+
+    try {
+      const result = await platformApi(platform, method, endpoint, body);
+      const ok = result.status < 300;
+      if (!ok) {
+        const detail = result.data?.message?.[0] || result.data?.err || result.data?.error?.message || JSON.stringify(result.data).slice(0, 300);
+        return res.json({ reply: `That didn't go through -- ${platform} returned HTTP ${result.status}: ${detail}` });
+      }
+      const d = result.data || {};
+      const ref = d.url || d.id || d.contact?.id || d.opportunity?.id || d.task?.id || '';
+      return res.json({ reply: `Done.${ref ? ` (${ref})` : ''}` });
+    } catch (err) {
+      return res.status(502).json({ error: `Execution failed: ${err.message}` });
     }
   }
 
