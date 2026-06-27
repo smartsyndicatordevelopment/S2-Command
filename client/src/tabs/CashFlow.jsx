@@ -4,6 +4,10 @@ import { useApi } from '../hooks/useApi';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_MONTH = new Date().getMonth() + 1;
+// Default the view to the previous month, rolling back into December of the
+// prior year when the current month is January.
+const PREV_MONTH = CURRENT_MONTH === 1 ? 12 : CURRENT_MONTH - 1;
+const PREV_MONTH_YEAR = CURRENT_MONTH === 1 ? CURRENT_YEAR - 1 : CURRENT_YEAR;
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2, CURRENT_YEAR - 3];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -88,8 +92,8 @@ function Stat({ label, value, color }) {
 }
 
 export default function CashFlow() {
-  const [year, setYear] = useState(CURRENT_YEAR);
-  const [month, setMonth] = useState(0); // 0 = Full Year, 1-12 = month
+  const [year, setYear] = useState(PREV_MONTH_YEAR);
+  const [month, setMonth] = useState(PREV_MONTH); // 0 = Full Year, 1-12 = month
 
   // The current year only has months up to this month; clamp so we never request a future month.
   const maxMonth = year === CURRENT_YEAR ? CURRENT_MONTH : 12;

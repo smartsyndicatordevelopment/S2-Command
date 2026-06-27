@@ -26,8 +26,8 @@ const NAV_ITEMS = [
     id: 'financials-group',
     label: 'Financials',
     children: [
-      { id: 'financials', label: 'Financials' },
       { id: 'cashflow', label: 'Cash Flow' },
+      { id: 'financials', label: 'Financials' },
       { id: 'customers', label: 'Customers' },
     ],
   },
