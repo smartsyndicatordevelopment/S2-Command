@@ -109,7 +109,10 @@ export default function Overview() {
     if (!userText || loading || approving || pendingAction) return;
     setInput('');
 
-    if (!currentSessionId) {
+    // Capture the session id locally -- setCurrentSessionId is async, so we can't
+    // rely on currentSessionId being updated in time for the request body below.
+    let sessionId = currentSessionId;
+    if (!sessionId) {
       const autoName = userText.length > 42 ? userText.slice(0, 42).trimEnd() + '...' : userText;
       try {
         const sr = await fetch('/api/sessions/overview', {
@@ -120,6 +123,7 @@ export default function Overview() {
         const ns = await sr.json();
         setSessions(prev => [ns, ...prev]);
         setCurrentSessionId(ns.id);
+        sessionId = ns.id;
       } catch { /* continue without session */ }
     }
 
@@ -136,6 +140,7 @@ export default function Overview() {
           message: userText,
           history,
           context: { mrr, uniqueClients, subscriptionCount, ytdRevenue },
+          sessionId,
         }),
       });
       const data = await res.json();
@@ -159,7 +164,11 @@ export default function Overview() {
       const res  = await fetch('/api/chat/execute', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: pendingAction.action }),
+        body: JSON.stringify({
+          action: pendingAction.action,
+          sessionId: currentSessionId,
+          preview: pendingAction.preview,
+        }),
       });
       const data = await res.json();
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply || data.error || 'Done.' }]);

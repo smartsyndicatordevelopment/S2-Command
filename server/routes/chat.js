@@ -2,7 +2,25 @@ const router = require('express').Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const Stripe = require('stripe');
 const fetch = require('node-fetch');
+const { query } = require('../lib/db');
 const { fetchPnL: digitsFetchPnL } = require('./digits');
+
+const AGENT = 'overview';
+
+// Persist a user/assistant turn to the session so it survives reloads and
+// shows when the chat is reopened from the sidebar. No-op without a sessionId.
+async function persistMessages(sessionId, userText, assistantText) {
+  if (!sessionId) return;
+  try {
+    await query(
+      `INSERT INTO chat_messages(session_id, role, content) VALUES($1,'user',$2),($1,'assistant',$3)`,
+      [sessionId, userText, assistantText]
+    );
+    await query('UPDATE chat_sessions SET updated_at = now() WHERE id = $1', [sessionId]);
+  } catch (err) {
+    console.error('overview chat: failed to persist messages:', err.message);
+  }
+}
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -842,7 +860,7 @@ const MAX_HISTORY_ENTRIES = 40;
 const MAX_HISTORY_CONTENT_LEN = 10000;
 
 router.post('/chat', async (req, res) => {
-  const { message, history, context } = req.body;
+  const { message, history, context, sessionId } = req.body;
 
   if (!message || typeof message !== 'string' || !message.trim()) {
     return res.status(400).json({ error: 'message required' });
@@ -867,10 +885,11 @@ router.post('/chat', async (req, res) => {
         .map(m => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_CONTENT_LEN) }))
     : [];
 
+  const userMessage = message.trim();
   const systemPrompt = buildSystemPrompt(safeContext);
   let messages = [
     ...safeHistory,
-    { role: 'user', content: message.trim() },
+    { role: 'user', content: userMessage },
   ];
 
   let attempts = 3;
@@ -888,6 +907,7 @@ router.post('/chat', async (req, res) => {
 
         if (response.stop_reason === 'end_turn') {
           const text = response.content.find(b => b.type === 'text')?.text || '';
+          await persistMessages(sessionId, userMessage, text);
           return res.json({ reply: text });
         }
 
@@ -897,10 +917,15 @@ router.post('/chat', async (req, res) => {
           if (writeBlock) {
             const claudeText = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
             const { preview_description, ...rest } = writeBlock.input;
+            // Persist the turn now so the request + proposal survive a reload even
+            // before the action is approved. The approval/result is appended later
+            // by /chat/execute.
+            await persistMessages(sessionId, userMessage, claudeText || `(Proposed an action for approval: ${preview_description})`);
             return res.json({
               type:    'pending_action',
               message: claudeText,
               preview: preview_description,
+              sessionId,
               action:  { type: writeBlock.name, ...rest },
             });
           }
@@ -935,7 +960,9 @@ router.post('/chat', async (req, res) => {
 
         // Unexpected stop reason -- return whatever text exists
         const text = response.content.find(b => b.type === 'text')?.text || '';
-        return res.json({ reply: text || 'No response generated.' });
+        const reply = text || 'No response generated.';
+        await persistMessages(sessionId, userMessage, reply);
+        return res.json({ reply });
       }
     } catch (err) {
       attempts--;
@@ -950,8 +977,12 @@ router.post('/chat', async (req, res) => {
 
 // POST /api/chat/execute -- run an approved action from the analyst
 router.post('/chat/execute', async (req, res) => {
-  const { action } = req.body;
+  const { action, sessionId, preview } = req.body;
   if (!action?.type) return res.status(400).json({ error: 'action.type required' });
+
+  // Append the approval + result to the session transcript (best effort).
+  const logResult = (replyText) =>
+    persistMessages(sessionId, `[Action approved]${preview ? ` ${preview}` : ''}`, replyText);
 
   if (action.type === 'toggle_fb_campaign') {
     const { campaign_id, status } = action;
@@ -969,7 +1000,9 @@ router.post('/chat/execute', async (req, res) => {
         const data = await r.json();
         if (data.error) return res.status(400).json({ error: data.error.message });
         const verb = status === 'PAUSED' ? 'paused' : 'activated';
-        return res.json({ reply: `Campaign ${verb} successfully.` });
+        const reply = `Campaign ${verb} successfully.`;
+        await logResult(reply);
+        return res.json({ reply });
       } catch (err) {
         if (i === 2) return res.status(502).json({ error: err.message });
         await new Promise(r => setTimeout(r, 1000 * (i + 1)));
@@ -992,7 +1025,9 @@ router.post('/chat/execute', async (req, res) => {
     try {
       const data = await clickupPost(`/list/${list_id}/task`, body);
       if (data?.id) {
-        return res.json({ reply: `Task created: "${data.name}"${data.url ? ` -- ${data.url}` : ''}` });
+        const reply = `Task created: "${data.name}"${data.url ? ` -- ${data.url}` : ''}`;
+        await logResult(reply);
+        return res.json({ reply });
       }
       return res.status(400).json({ error: data?.err || 'ClickUp did not return a task id' });
     } catch (err) {
@@ -1010,11 +1045,15 @@ router.post('/chat/execute', async (req, res) => {
       const ok = result.status < 300;
       if (!ok) {
         const detail = result.data?.message?.[0] || result.data?.err || result.data?.error?.message || JSON.stringify(result.data).slice(0, 300);
-        return res.json({ reply: `That didn't go through -- ${platform} returned HTTP ${result.status}: ${detail}` });
+        const reply = `That didn't go through -- ${platform} returned HTTP ${result.status}: ${detail}`;
+        await logResult(reply);
+        return res.json({ reply });
       }
       const d = result.data || {};
       const ref = d.url || d.id || d.contact?.id || d.opportunity?.id || d.task?.id || '';
-      return res.json({ reply: `Done.${ref ? ` (${ref})` : ''}` });
+      const reply = `Done.${ref ? ` (${ref})` : ''}`;
+      await logResult(reply);
+      return res.json({ reply });
     } catch (err) {
       return res.status(502).json({ error: `Execution failed: ${err.message}` });
     }
