@@ -6,3 +6,4 @@ server/tokens.json
 *.log
 .DS_Store
 sessions/
+.gstack/

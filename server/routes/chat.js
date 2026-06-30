@@ -593,11 +593,16 @@ async function fbApi(method, path, body) {
 }
 
 async function digitsApi(method, endpoint, body) {
-  const { getToken } = require('../lib/digitsTokens');
+  const { getToken, getTokenCache } = require('../lib/digitsTokens');
   const m = method.toUpperCase();
   if (m !== 'GET' && m !== 'POST') throw new Error('Digits is read-only (GET, or POST for /v1/ledger/entries/query).');
   const token = await getToken();
-  const opts = { method: m, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' } };
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' };
+  // The ledger is scoped to the connected business -- the Digits-Business-Id header
+  // is required or queries 400. Mirror the dedicated digits route's businessHeaders.
+  const businessId = process.env.DIGITS_BUSINESS_ID || getTokenCache().businessId || '';
+  if (businessId) headers['Digits-Business-Id'] = businessId;
+  const opts = { method: m, headers };
   if (body && m === 'POST') opts.body = JSON.stringify(body);
   const r = await fetch(`https://connect.digits.com${endpoint}`, opts);
   const data = await r.json().catch(() => ({}));
@@ -763,7 +768,7 @@ const TOOLS = [
         platform: { type: 'string', enum: ['ghl', 'clickup', 'make', 'fb', 'digits'], description: 'Which connected system to call.' },
         method:   { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], description: 'GET = read (runs now). POST/PUT/PATCH/DELETE = write (needs approval).' },
         endpoint: { type: 'string', description: 'API path including any query string. GHL (base services.leadconnectorhq.com): /contacts/, /contacts/{id}, /conversations/messages (POST to send SMS/email), /opportunities/search. ClickUp (api.clickup.com/api/v2): /list/{listId}/task (POST create), /task/{taskId} (PUT update, DELETE), /team/{teamId}/task. Make (v2): /scenarios, /scenarios/{id} (PATCH/DELETE). Facebook Graph: /{campaignId} (POST to update status/budget), /act_{accountId}/campaigns. Digits (connect.digits.com): /v1/ledger/statement/balance-sheet?startDate=&endDate=&interval=Year, /v1/ledger/entries/query (POST).' },
-        body:     { type: 'object', description: 'JSON body for POST/PUT/PATCH (also Digits POST queries).' },
+        body:     { type: 'object', description: 'JSON body for POST/PUT/PATCH (also Digits POST queries). For the Digits ledger query (/v1/ledger/entries/query) the shape is { "filters": { "occurredAfter": "2026-06-01T00:00:00.000Z", "occurredBefore": "2026-07-01T00:00:00.000Z", "categoryTypes": ["Expenses","CostOfGoodsSold","OtherExpenses"] }, "limit": 1000 }. occurredAfter/occurredBefore are full ISO timestamps; filter the resulting entries by category name client-side (each entry is entryDetails[].entry with amount.amount in cents, category.name, counterparty.name, description).' },
         preview_description: { type: 'string', description: 'Required for writes. Plain-English summary of exactly what will change, with names/values.' },
       },
       required: ['platform', 'method', 'endpoint'],
@@ -1044,7 +1049,11 @@ router.post('/chat/execute', async (req, res) => {
       const result = await platformApi(platform, method, endpoint, body);
       const ok = result.status < 300;
       if (!ok) {
-        const detail = result.data?.message?.[0] || result.data?.err || result.data?.error?.message || JSON.stringify(result.data).slice(0, 300);
+        // message can be a string or an array of strings depending on platform --
+        // handle both so we surface the real reason, not just its first character.
+        const rawMsg = result.data?.message;
+        const detail = (Array.isArray(rawMsg) ? rawMsg[0] : rawMsg) ||
+          result.data?.err || result.data?.error?.message || JSON.stringify(result.data).slice(0, 300);
         const reply = `That didn't go through -- ${platform} returned HTTP ${result.status}: ${detail}`;
         await logResult(reply);
         return res.json({ reply });
