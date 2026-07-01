@@ -21,7 +21,7 @@ import Settings from '../tabs/Settings';
 import CashFlow from '../tabs/CashFlow';
 
 const NAV_ITEMS = [
-  { id: 'overview', label: 'Overview' },
+  { id: 'overview', label: 'Overview Agent' },
   {
     id: 'financials-group',
     label: 'Financials',

@@ -4,6 +4,7 @@ const Stripe = require('stripe');
 const fetch = require('node-fetch');
 const { query } = require('../lib/db');
 const { fetchPnL: digitsFetchPnL } = require('./digits');
+const { readPlan: readBusinessPlan, updatePlan: updateBusinessPlan } = require('./businessPlan');
 
 const AGENT = 'overview';
 
@@ -623,6 +624,7 @@ function platformApi(platform, method, endpoint, body) {
 // A tool_use block that mutates data and must be approved before it runs.
 function isAnalystWrite(b) {
   if (b.name === 'toggle_fb_campaign' || b.name === 'create_clickup_task') return true;
+  if (b.name === 'update_business_plan') return true;
   if (b.name === 'agent_api') return (b.input?.method || 'GET').toUpperCase() !== 'GET';
   return false;
 }
@@ -760,6 +762,61 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_business_plan',
+    description: 'Fetch the current Business Plan document (the content shown on the Business Plan page): vision statement, growth roadmap phases, competitive moat, and risk register. ALWAYS call this before update_business_plan so you edit the real current content rather than guessing.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'update_business_plan',
+    description: 'Edit the Business Plan document. Requires Brandon\'s approval before it saves -- it returns a pending approval, so do NOT assume it saved. Call get_business_plan FIRST, then pass ONLY the section(s) you are changing. For phases/moat/risks you must pass the COMPLETE new array for that section (the whole array is replaced, not merged item-by-item) -- start from the current array and add/edit/remove items as needed. Always include a clear preview_description of exactly what is changing.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        vision: { type: 'string', description: 'New vision statement (replaces the current one).' },
+        phases: {
+          type: 'array',
+          description: 'Complete replacement growth roadmap. Each phase: { phase, title, status, items }. status must be "complete", "active", or "upcoming".',
+          items: {
+            type: 'object',
+            properties: {
+              phase:  { type: 'string', description: 'e.g. "Phase 2"' },
+              title:  { type: 'string', description: 'e.g. "Revenue Engine"' },
+              status: { type: 'string', enum: ['complete', 'active', 'upcoming'] },
+              items:  { type: 'array', items: { type: 'string' }, description: 'Bullet points for the phase.' },
+            },
+            required: ['phase', 'title', 'status', 'items'],
+          },
+        },
+        moat: {
+          type: 'array',
+          description: 'Complete replacement competitive moat list. Each item: { label, desc }.',
+          items: {
+            type: 'object',
+            properties: {
+              label: { type: 'string' },
+              desc:  { type: 'string' },
+            },
+            required: ['label', 'desc'],
+          },
+        },
+        risks: {
+          type: 'array',
+          description: 'Complete replacement risk register. Each item: { risk, mitigation }.',
+          items: {
+            type: 'object',
+            properties: {
+              risk:       { type: 'string' },
+              mitigation: { type: 'string' },
+            },
+            required: ['risk', 'mitigation'],
+          },
+        },
+        preview_description: { type: 'string', description: 'Plain-English summary of exactly what is changing, shown to Brandon for approval, e.g. "Update Phase 2 MRR target from $20K to $30K and add a risk about API reliability".' },
+      },
+      required: ['preview_description'],
+    },
+  },
+  {
     name: 'agent_api',
     description: 'Direct access to any connected platform API -- this lets you do ANYTHING the dedicated GHL, ClickUp, Make, Facebook Ads, and Digits agents can do, including writes. Use it for anything the specific tools above do not cover. method GET runs immediately (reads). method POST/PUT/PATCH/DELETE are WRITES: they return a pending approval card and only execute after Brandon approves -- never assume a write ran. Always include a specific preview_description for writes. Prefer the specific tools (get_pnl, get_ghl_pipeline, get_clickup_tasks, etc.) for common reads.',
     input_schema: {
@@ -789,6 +846,7 @@ async function executeTool(name, input) {
     case 'get_make_overview':  return await toolGetMakeOverview();
     case 'get_clickup_tasks':  return await toolGetClickupTasks(input.overdue_only);
     case 'get_clickup_workspace': return await toolGetClickupWorkspace();
+    case 'get_business_plan':   return await readBusinessPlan();
     case 'agent_api': {
       // Only reads reach here -- writes are intercepted for approval before execution.
       const method = (input.method || 'GET').toUpperCase();
@@ -845,6 +903,10 @@ function buildSystemPrompt(ctx) {
     `- get_clickup_tasks(overdue_only) -- open tasks with status, due date, assignee, list, plus totalOpen and overdueCount. Pass overdue_only=true for just-past-due tasks.`,
     `- get_clickup_workspace        -- lists (id, name, space, folder) and team members (id, username, email)`,
     `- create_clickup_task(list_id, name, assignee_ids, due_date, description, preview_description) -- create and assign a task. ALWAYS call get_clickup_workspace FIRST to resolve the list_id and assignee user ids by name. Returns a pending approval -- do not assume it executed. If the list or assignee is ambiguous, ask Brandon which one.`,
+    ``,
+    `Business Plan (the Business Plan page content):`,
+    `- get_business_plan             -- read the current vision, roadmap phases, competitive moat, and risk register`,
+    `- update_business_plan(vision?, phases?, moat?, risks?, preview_description) -- edit the plan. ALWAYS call get_business_plan first, then pass only the section(s) you are changing. For phases/moat/risks pass the COMPLETE new array (it replaces that whole section). Returns a pending approval -- do not assume it saved.`,
     ``,
     `Anything else (orchestrator):`,
     `- agent_api(platform, method, endpoint, body, preview_description) -- direct access to ghl, clickup, make, fb, or digits. Do anything the dedicated agents can, including writes (send SMS, create/update/delete contacts, tasks, opportunities, scenarios, campaigns). GET runs now; POST/PUT/PATCH/DELETE require Brandon's approval -- never assume a write executed. Use the specific tools above for common reads; use agent_api for everything else.`,
@@ -1037,6 +1099,19 @@ router.post('/chat/execute', async (req, res) => {
       return res.status(400).json({ error: data?.err || 'ClickUp did not return a task id' });
     } catch (err) {
       return res.status(502).json({ error: `Failed to create task: ${err.message}` });
+    }
+  }
+
+  if (action.type === 'update_business_plan') {
+    const { type, ...partial } = action; // everything except the discriminator is plan content
+    try {
+      await updateBusinessPlan(partial);
+      const changed = ['vision', 'phases', 'moat', 'risks'].filter(k => partial[k] !== undefined);
+      const reply = `Business plan updated${changed.length ? ` (${changed.join(', ')})` : ''}.`;
+      await logResult(reply);
+      return res.json({ reply });
+    } catch (err) {
+      return res.status(502).json({ error: `Failed to update business plan: ${err.message}` });
     }
   }
 

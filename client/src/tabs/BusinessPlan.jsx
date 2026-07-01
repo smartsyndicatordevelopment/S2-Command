@@ -82,6 +82,14 @@ function fmtK(n) {
 export default function BusinessPlan() {
   const subs = useApi('/api/subscriptions');
   const mktg = useApi('/api/marketing-spend');
+  const plan = useApi('/api/business-plan');
+
+  // Editable plan content -- served from the API (agent-editable), with the
+  // hardcoded constants as a fallback while loading or if a section is missing.
+  const vision = plan.data?.vision || VISION;
+  const phases = plan.data?.phases || PHASES;
+  const moat   = plan.data?.moat   || MOAT;
+  const risks  = plan.data?.risks  || RISKS;
 
   const mrr               = subs.data?.mrr || 0;
   const uniqueClients     = subs.data?.uniqueClients || 0;
@@ -175,13 +183,13 @@ export default function BusinessPlan() {
 
       <Card>
         <p className="text-xs font-medium uppercase tracking-widest text-muted mb-3">Vision</p>
-        <p className="text-base text-white leading-relaxed">{VISION}</p>
+        <p className="text-base text-white leading-relaxed">{vision}</p>
       </Card>
 
       <div>
         <p className="text-xs font-medium uppercase tracking-widest text-muted mb-4">Growth Roadmap</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {PHASES.map(p => (
+          {phases.map(p => (
             <div key={p.phase} className="bg-card border border-border rounded-lg p-5">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs text-muted">{p.phase}</span>
@@ -207,7 +215,7 @@ export default function BusinessPlan() {
         <Card>
           <p className="text-xs font-medium uppercase tracking-widest text-muted mb-4">Competitive Moat</p>
           <div className="space-y-4 divide-y divide-border">
-            {MOAT.map(m => (
+            {moat.map(m => (
               <div key={m.label} className="pt-4 first:pt-0">
                 <p className="text-sm font-medium text-purple mb-1">{m.label}</p>
                 <p className="text-xs text-dim leading-relaxed">{m.desc}</p>
@@ -219,7 +227,7 @@ export default function BusinessPlan() {
         <Card>
           <p className="text-xs font-medium uppercase tracking-widest text-muted mb-4">Risk Register</p>
           <div className="space-y-4 divide-y divide-border">
-            {RISKS.map(r => (
+            {risks.map(r => (
               <div key={r.risk} className="pt-4 first:pt-0">
                 <p className="text-sm font-medium text-yellow mb-1">{r.risk}</p>
                 <p className="text-xs text-dim leading-relaxed">{r.mitigation}</p>

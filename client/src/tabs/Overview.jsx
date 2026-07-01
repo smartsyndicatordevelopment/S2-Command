@@ -189,7 +189,7 @@ export default function Overview() {
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 116px)' }}>
       <div className="mb-4 flex-shrink-0">
-        <h1 className="text-lg font-semibold" style={{ color: 'var(--c-text-primary)' }}>Overview</h1>
+        <h1 className="text-lg font-semibold" style={{ color: 'var(--c-text-primary)' }}>Overview Agent</h1>
         <p className="text-xs mt-0.5" style={{ color: 'var(--c-muted)' }}>
           Ask your business analyst anything -- live data across Stripe, Digits, Facebook Ads, GHL, Make, and ClickUp
         </p>

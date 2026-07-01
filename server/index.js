@@ -27,6 +27,7 @@ const digitsChatRouter    = require('./routes/digitsChat');
 const sessionsRouter      = require('./routes/sessions');
 const integrateRouter     = require('./routes/integrate');
 const statusRouter        = require('./routes/status');
+const businessPlanRouter  = require('./routes/businessPlan');
 
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT_NAME;
@@ -159,6 +160,7 @@ app.use('/api', digitsChatRouter);
 app.use('/api', sessionsRouter);
 app.use('/api', integrateRouter);
 app.use('/api', statusRouter);
+app.use('/api', businessPlanRouter);
 
 // Serve React build in production
 if (!isDev) {
