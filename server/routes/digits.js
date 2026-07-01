@@ -259,6 +259,45 @@ const EXPENSE_CATEGORY_TYPES = ['Expenses', 'CostOfGoodsSold', 'OtherExpenses'];
 const SOFTWARE_RE  = /software|saas|subscription|\bapps?\b|cloud|platform|\btool/i;
 const MARKETING_RE = /advertis|marketing|promo|social media|ad spend|\bads\b/i;
 
+// Clean, itemized transaction list for the analyst. Returns entries (most recent
+// first) with date, description, counterparty, category, and a signed dollar
+// amount (negative = money out). Optional category-name substring filter.
+async function queryTransactions({ startDate, endDate, categoryTypes, categoryMatch, limit = 100 } = {}) {
+  const now = new Date();
+  const start = startDate ? new Date(startDate) : new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = endDate ? new Date(`${endDate}T23:59:59`) : now;
+
+  const filters = { occurredAfter: start.toISOString(), occurredBefore: end.toISOString() };
+  if (Array.isArray(categoryTypes) && categoryTypes.length) filters.categoryTypes = categoryTypes;
+
+  const details = await digitsQueryEntries(filters);
+  const re = categoryMatch ? new RegExp(categoryMatch, 'i') : null;
+
+  const transactions = details
+    .map(ed => {
+      const e = ed.entry || {};
+      return {
+        date:         (ed.date || '').split('T')[0],
+        description:  e.description || null,
+        counterparty: e.counterparty?.name || null,
+        category:     e.category?.name || null,
+        categoryType: e.category?.type || null,
+        amount:       typeof e.amount?.amount === 'number' ? e.amount.amount / 100 : null,
+      };
+    })
+    .filter(t => t.date && (!re || re.test(t.category || '') || re.test(t.description || '') || re.test(t.counterparty || '')))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
+  const cap = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500);
+  return {
+    startDate:   filters.occurredAfter.split('T')[0],
+    endDate:     filters.occurredBefore.split('T')[0],
+    totalMatched: transactions.length,
+    returned:    Math.min(transactions.length, cap),
+    transactions: transactions.slice(0, cap),
+  };
+}
+
 // Group expense entries matching a category-name pattern into per-vendor rollups.
 function rollupVendors(details, pattern) {
   const now = new Date();
@@ -547,3 +586,4 @@ module.exports = router;
 // Shared helpers for the Overview analyst (chat.js) so the P&L logic lives in one place.
 module.exports.fetchPnL = fetchPnL;
 module.exports.digitsConfigured = digitsConfigured;
+module.exports.queryTransactions = queryTransactions;

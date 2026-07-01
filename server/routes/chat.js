@@ -3,7 +3,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const Stripe = require('stripe');
 const fetch = require('node-fetch');
 const { query } = require('../lib/db');
-const { fetchPnL: digitsFetchPnL } = require('./digits');
+const { fetchPnL: digitsFetchPnL, queryTransactions: digitsQueryTransactions } = require('./digits');
 const { readPlan: readBusinessPlan, updatePlan: updateBusinessPlan } = require('./businessPlan');
 
 const AGENT = 'overview';
@@ -460,6 +460,17 @@ async function toolGetPnL({ year, start_date, end_date, interval } = {}) {
   return { startDate, endDate, interval: iv, ...parsed };
 }
 
+async function toolGetTransactions(input = {}) {
+  const categoryTypes = input.expenses_only ? ['Expenses', 'CostOfGoodsSold', 'OtherExpenses'] : undefined;
+  return await digitsQueryTransactions({
+    startDate:     input.start_date,
+    endDate:       input.end_date,
+    categoryTypes,
+    categoryMatch: input.category_match,
+    limit:         input.limit || 100,
+  });
+}
+
 async function toolGetSalesTax(month) {
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('month must be YYYY-MM');
   const [year, mo] = month.split('-').map(Number);
@@ -625,7 +636,14 @@ function platformApi(platform, method, endpoint, body) {
 function isAnalystWrite(b) {
   if (b.name === 'toggle_fb_campaign' || b.name === 'create_clickup_task') return true;
   if (b.name === 'update_business_plan') return true;
-  if (b.name === 'agent_api') return (b.input?.method || 'GET').toUpperCase() !== 'GET';
+  if (b.name === 'agent_api') {
+    const method = (b.input?.method || 'GET').toUpperCase();
+    if (method === 'GET') return false;
+    // Digits is a read-only integration -- it uses POST only for ledger/statement
+    // queries, so a Digits POST is a read, not a write requiring approval.
+    if (b.input?.platform === 'digits') return false;
+    return true;
+  }
   return false;
 }
 
@@ -662,6 +680,21 @@ const TOOLS = [
         end_date:   { type: 'string', description: 'Period end in YYYY-MM-DD, e.g. 2026-05-31. Use with start_date.' },
         year:       { type: 'integer', description: 'Full calendar year, e.g. 2025 or 2026. Used only when start_date/end_date are not provided.' },
         interval:   { type: 'string', enum: ['Year', 'Quarter', 'Month'], description: 'Granularity. Defaults to Month for a date range, Year for a full year.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_transactions',
+    description: 'List individual ledger transactions from Digits accounting for a date range: date, description, vendor/counterparty, category, and amount (negative = money out). Use this for ANY request for transaction-level detail, itemized breakdowns, "show me the transactions", "what did I spend on X", "list recent transactions", or vendor-by-vendor spend. Runs immediately -- it is read-only, no approval needed. Prefer this over get_pnl when the user wants the actual line items rather than totals.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        start_date:    { type: 'string', description: 'Start date YYYY-MM-DD. Defaults to the start of last month.' },
+        end_date:      { type: 'string', description: 'End date YYYY-MM-DD (inclusive). Defaults to today.' },
+        expenses_only: { type: 'boolean', description: 'When true, only expense transactions (Expenses, CostOfGoodsSold, OtherExpenses).' },
+        category_match:{ type: 'string', description: 'Optional case-insensitive substring/regex to match against the category, description, or vendor -- e.g. "software" or "apps" to find Software & Apps spend.' },
+        limit:         { type: 'integer', description: 'Max transactions to return (default 100, max 500), most recent first.' },
       },
       required: [],
     },
@@ -838,6 +871,7 @@ async function executeTool(name, input) {
     case 'get_subscriptions': return await toolGetSubscriptions(input.status);
     case 'get_ytd_revenue':   return await toolGetYtdRevenue();
     case 'get_pnl':           return await toolGetPnL(input);
+    case 'get_transactions':  return await toolGetTransactions(input);
     case 'get_sales_tax':     return await toolGetSalesTax(input.month);
     case 'get_fb_performance': return await toolGetFbPerformance(input.date_preset, input.level);
     case 'get_fb_campaigns':   return await toolGetFbCampaigns();
@@ -850,8 +884,11 @@ async function executeTool(name, input) {
     case 'agent_api': {
       // Only reads reach here -- writes are intercepted for approval before execution.
       const method = (input.method || 'GET').toUpperCase();
-      if (method !== 'GET') throw new Error('Writes must be approved, not executed inline.');
-      return await platformApi(input.platform, 'GET', input.endpoint, null);
+      if (method === 'GET') return await platformApi(input.platform, 'GET', input.endpoint, null);
+      // Digits is read-only and uses POST for ledger/statement queries -- run it
+      // inline (with its body) and return the data so it can be summarized.
+      if (input.platform === 'digits') return await platformApi('digits', 'POST', input.endpoint, input.body || {});
+      throw new Error('Writes must be approved, not executed inline.');
     }
     default: throw new Error(`Unknown tool: ${name}`);
   }
@@ -886,6 +923,7 @@ function buildSystemPrompt(ctx) {
     ``,
     `Digits (accounting):`,
     `- get_pnl(...)                -- Digits P&L for any period: pass start_date + end_date for a specific month/quarter/range (e.g. "last month"), or year for a full year`,
+    `- get_transactions(start_date, end_date, expenses_only, category_match, limit) -- itemized ledger transactions (date, vendor, category, amount). Use this whenever Brandon wants line items, "transaction level data", "recent transactions", or spend on a specific vendor/category. Read-only, runs immediately -- never route this through agent_api or an approval.`,
     ``,
     `Facebook Ads (paid acquisition):`,
     `- get_fb_performance(date_preset, level) -- level="account" for totals, "campaign"/"adset"/"ad" for breakdowns. Returns spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, ROAS per row`,
