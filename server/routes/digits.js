@@ -642,6 +642,10 @@ async function syncTransactions(transactions) {
 const PARTY_VERITUS = 'party-veritus-melissa-hawkins';
 const PARTY_STRIPE  = 'party-stripe';
 
+// Party CREATE uses a bare-string externalId; party REFERENCE (counterparty) uses
+// the {issuer, id} object form, same as a transaction's externalId.
+const partyRef = (id) => ({ externalId: { issuer: 'command.smartsyndicator.com', id } });
+
 async function syncParties() {
   return await digitsPost('/v1/source/parties', {
     parties: [
@@ -668,11 +672,11 @@ router.get('/digits/recat-test', async (req, res) => {
     memo:       VERITUS_DESC,
     entries: [
       // Leg 1 -- income, re-pointed to Rebilling Income, party = Veritus
-      { amount: { amount: 1051, code: 'USD' }, type: 'Credit', category: { label: 'rebilling_income' }, description: VERITUS_DESC, counterparty: { externalId: PARTY_VERITUS } },
+      { amount: { amount: 1051, code: 'USD' }, type: 'Credit', category: { label: 'rebilling_income' }, description: VERITUS_DESC, counterparty: partyRef(PARTY_VERITUS) },
       // Leg 2 -- net settlement due from Stripe, party = Stripe
-      { amount: { amount: 991,  code: 'USD' }, type: 'Debit',  category: { label: 'stripe_clearing' }, description: 'Net settlement due from Stripe', counterparty: { externalId: PARTY_STRIPE } },
+      { amount: { amount: 991,  code: 'USD' }, type: 'Debit',  category: { label: 'stripe_clearing' }, description: 'Net settlement due from Stripe', counterparty: partyRef(PARTY_STRIPE) },
       // Leg 3 -- Stripe processing fee, party = Stripe
-      { amount: { amount: 60,   code: 'USD' }, type: 'Debit',  category: { label: 'stripe_fees' }, description: 'Stripe processing fee', counterparty: { externalId: PARTY_STRIPE } },
+      { amount: { amount: 60,   code: 'USD' }, type: 'Debit',  category: { label: 'stripe_fees' }, description: 'Stripe processing fee', counterparty: partyRef(PARTY_STRIPE) },
     ],
   };
   try {
