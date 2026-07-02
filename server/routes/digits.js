@@ -610,6 +610,42 @@ router.get('/digits/setup-source', async (req, res) => {
   }
 });
 
+// ─── Transaction sync (write) + single-transaction override test ──────────────
+
+async function syncTransactions(transactions) {
+  return await digitsPost('/v1/source/transactions', { transactions });
+}
+
+// TEMPORARY override test. Mirrors ONE real transaction -- the Veritus Capital
+// (Melissa Hawkins) $10.51 auto-recharge on 2026-06-30 -- with leg 1 re-pointed
+// from Sales Uncategorized to Rebilling Income, keeping the Stripe Clearing and
+// Stripe Fees legs identical so Digits matches (merges) rather than duplicating.
+// We then read the ledger back to see whether the income category adopted our
+// value. Remove after the test.
+router.get('/digits/recat-test', async (req, res) => {
+  const txn = {
+    externalId: { issuer: 'command.smartsyndicator.com', id: 'recat-veritus-20260630-1051' },
+    sourceId:   S2_SOURCE_EXTERNAL_ID,
+    date:       '2026-06-30T12:00:00Z',
+    memo:       'Auto-Recharge for Sub-Account - Veritus Capital - Melissa Hawkins (S2 Command re-categorization to Rebilling Income)',
+    entries: [
+      // Leg 1 -- income, re-pointed to Rebilling Income
+      { amount: { amount: 1051, code: 'USD' }, type: 'Credit', category: { ledgerId: 'c56e026e-6897-498c-90d8-e357e356297f' }, description: 'Rebilling Income' },
+      // Leg 2 -- net settlement due from Stripe (unchanged)
+      { amount: { amount: 991,  code: 'USD' }, type: 'Debit',  category: { ledgerId: 'f042f50e-065c-413c-b83d-fbe0b9788e70' }, description: 'Net settlement due from Stripe' },
+      // Leg 3 -- Stripe processing fee (unchanged)
+      { amount: { amount: 60,   code: 'USD' }, type: 'Debit',  category: { ledgerId: '73f2b3c3-4d30-43ee-928c-ad887be63f38' }, description: 'Stripe processing fee' },
+    ],
+  };
+  try {
+    const result = await syncTransactions([txn]);
+    res.json({ ok: true, wrote: txn, result });
+  } catch (err) {
+    console.error('Digits recat-test error:', err.message);
+    res.status(500).json({ ok: false, error: err.message, attempted: txn });
+  }
+});
+
 // ─── Status ───────────────────────────────────────────────────────────────────
 
 router.get('/digits/status', (req, res) => {
