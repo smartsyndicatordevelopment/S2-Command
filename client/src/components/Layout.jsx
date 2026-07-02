@@ -19,6 +19,7 @@ import MakeAgent from '../tabs/MakeAgent';
 import DigitsAgent from '../tabs/DigitsAgent';
 import Settings from '../tabs/Settings';
 import CashFlow from '../tabs/CashFlow';
+import RecategorizeIncome from '../tabs/RecategorizeIncome';
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview Agent' },
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
       { id: 'cashflow', label: 'Cash Flow' },
       { id: 'financials', label: 'Financials' },
       { id: 'customers', label: 'Customers' },
+      { id: 'recat', label: 'Re-categorize Income' },
     ],
   },
   {
@@ -62,6 +64,7 @@ const TAB_COMPONENTS = {
   overview:   Overview,
   financials: Financials,
   cashflow:   CashFlow,
+  recat:      RecategorizeIncome,
   targets:    Targets,
   customers:  Customers,
   sales:      SalesAds,

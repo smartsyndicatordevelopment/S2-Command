@@ -571,13 +571,11 @@ router.get('/cashflow', async (req, res) => {
   }
 });
 
-// ─── Source Sync (write) ──────────────────────────────────────────────────────
+// ─── Source / party / transaction sync (write) ────────────────────────────────
 //
-// Registers S2 Command as a Digits source with income category labels. This is a
-// WRITE (requires the source:sync scope) but it adds NO transactions to the ledger
-// -- it only creates the source and its label->category mappings. That makes it a
-// safe probe: if it succeeds, re-authorization granted write access and we are set
-// up to sync (re-categorize) transactions later.
+// Reusable Digits Connect write primitives. S2 Command registers itself as a
+// source, then syncs corrected income transactions into it (the native Stripe
+// transactions are deleted by the user, so ours become the record of truth).
 
 const S2_SOURCE_EXTERNAL_ID = { issuer: 'command.smartsyndicator.com', id: 's2-income-adjustments' };
 
@@ -585,17 +583,22 @@ const S2_SOURCE_EXTERNAL_ID = { issuer: 'command.smartsyndicator.com', id: 's2-i
 // categories by LABEL. Each label resolves to an existing category by name + type
 // + subtype (values confirmed from the live chart of accounts).
 function catLabel(id, name, type, subtype) {
-  return {
-    label: id,
-    name,
-    constraint: [type],
-    preferAi: false,
-    search: { names: [name], type, subtype },
-  };
+  return { label: id, name, constraint: [type], preferAi: false, search: { names: [name], type, subtype } };
 }
 
-async function syncS2Source() {
-  const body = {
+// Label ids used when writing entries.
+const LABELS = {
+  rebilling:    'rebilling_income',
+  subscription: 'subscription_income',
+  consulting:   'consulting_income',
+  clearing:     'stripe_clearing',
+  fees:         'stripe_fees',
+};
+
+// Register / update our source and its label->category mappings. Idempotent; adds
+// no ledger transactions on its own.
+async function ensureS2Source() {
+  return await digitsPost('/v1/connection/sources', {
     sources: [{
       externalId: S2_SOURCE_EXTERNAL_ID,
       name: 'S2 Command Income Adjustments',
@@ -603,93 +606,36 @@ async function syncS2Source() {
       subtype: 'SalesRevenue',
       description: 'Re-classify Stripe income into finer categories',
       labels: [
-        // Income targets
-        catLabel('rebilling_income',   'Rebilling Income',     'Income',   'SalesRevenue'),
-        catLabel('subscription_income','Saas Income (Stripe)', 'Income',   'SalesRevenue'),
-        catLabel('consulting_income',  'Consulting Income',    'Income',   'SalesRevenue'),
-        // Offsetting legs used by Stripe payouts
-        catLabel('stripe_clearing',    'Stripe Clearing',      'Assets',   'BankAccounts'),
-        catLabel('stripe_fees',        'Stripe Fees',          'Expenses', 'GeneralOperations'),
+        catLabel(LABELS.rebilling,    'Rebilling Income',     'Income',   'SalesRevenue'),
+        catLabel(LABELS.subscription, 'Saas Income (Stripe)', 'Income',   'SalesRevenue'),
+        catLabel(LABELS.consulting,   'Consulting Income',    'Income',   'SalesRevenue'),
+        catLabel(LABELS.clearing,     'Stripe Clearing',      'Assets',   'BankAccounts'),
+        catLabel(LABELS.fees,         'Stripe Fees',          'Expenses', 'GeneralOperations'),
       ],
     }],
-  };
-  return await digitsPost('/v1/connection/sources', body);
-}
-
-// TEMPORARY probe -- confirms the source:sync scope works and registers our source
-// + income labels. Writes NO ledger transactions. Safe to open in a browser while
-// logged in. Remove after the write path is validated.
-router.get('/digits/setup-source', async (req, res) => {
-  try {
-    const result = await syncS2Source();
-    res.json({ ok: true, scope: 'source:sync appears granted', result });
-  } catch (err) {
-    console.error('Digits setup-source error:', err.message);
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// ─── Transaction sync (write) + single-transaction override test ──────────────
-
-async function syncTransactions(transactions) {
-  return await digitsPost('/v1/source/transactions', { transactions });
-}
-
-// Parties are linked records (not text) scoped to our source. We define our own
-// -- matching to the native Stripe source's parties is by NAME similarity.
-// NOTE: on the parties endpoint externalId is a bare STRING (unlike transactions,
-// where it is an {issuer, id} object).
-const PARTY_VERITUS = 'party-veritus-melissa-hawkins';
-const PARTY_STRIPE  = 'party-stripe';
-
-// Party CREATE uses a bare-string externalId; party REFERENCE (counterparty) uses
-// the {issuer, id} object form, same as a transaction's externalId.
-const partyRef = (id) => ({ externalId: { issuer: 'command.smartsyndicator.com', id } });
-
-async function syncParties() {
-  return await digitsPost('/v1/source/parties', {
-    parties: [
-      { externalId: PARTY_VERITUS, name: 'Veritus Capital - Melissa Hawkins', kind: 'Business' },
-      { externalId: PARTY_STRIPE,  name: 'Stripe', kind: 'Business' },
-    ],
   });
 }
 
-// TEMPORARY override test. Mirrors ONE real transaction -- the Veritus Capital
-// (Melissa Hawkins) $10.51 auto-recharge on 2026-06-30 -- with leg 1 re-pointed
-// from Sales Uncategorized to Rebilling Income, keeping the Stripe Clearing and
-// Stripe Fees legs identical so Digits matches (merges) rather than duplicating.
-// We then read the ledger back to see whether the income category adopted our
-// value. Remove after the test.
-// Exact original description, mirrored for maximum matching signal.
-const VERITUS_DESC = 'Auto-Recharge for Sub-Account - Veritus Capital - Melissa Hawkins of USD 10.01 was successfully added to the wallet. Please, check the billing page for more details:\n  app.smartsyndicator.com/v2/location/4One2rsEWOV3sfWokd3V/settings/company-billing/billing. Includes Tax usd 0.5, total charged usd 10.510000';
+// Party CREATE uses a bare-string externalId; party REFERENCE (counterparty) uses
+// the {issuer, id} object form, same as a transaction's externalId. Digits dedupes
+// parties we create to existing ones by name.
+const partyRef = (id) => ({ externalId: { issuer: 'command.smartsyndicator.com', id } });
+const STRIPE_PARTY_ID = 'party-stripe';
 
-router.get('/digits/recat-test', async (req, res) => {
-  const txn = {
-    // Fresh externalId -- the prior one (…-1051) had its ledger artifact deleted,
-    // so re-upserting it is treated as already-resolved and never re-promotes.
-    externalId: { issuer: 'command.smartsyndicator.com', id: 'recat-veritus-20260630-1051-v2' },
-    sourceId:   S2_SOURCE_EXTERNAL_ID,
-    date:       '2026-06-30T12:00:00Z',
-    memo:       VERITUS_DESC,
-    entries: [
-      // Leg 1 -- income, re-pointed to Rebilling Income, party = Veritus
-      { amount: { amount: 1051, code: 'USD' }, type: 'Credit', category: { label: 'rebilling_income' }, description: VERITUS_DESC, counterparty: partyRef(PARTY_VERITUS) },
-      // Leg 2 -- net settlement due from Stripe, party = Stripe
-      { amount: { amount: 991,  code: 'USD' }, type: 'Debit',  category: { label: 'stripe_clearing' }, description: 'Net settlement due from Stripe', counterparty: partyRef(PARTY_STRIPE) },
-      // Leg 3 -- Stripe processing fee, party = Stripe
-      { amount: { amount: 60,   code: 'USD' }, type: 'Debit',  category: { label: 'stripe_fees' }, description: 'Stripe processing fee', counterparty: partyRef(PARTY_STRIPE) },
-    ],
-  };
-  try {
-    const parties = await syncParties();
-    const result  = await syncTransactions([txn]);
-    res.json({ ok: true, parties, result, wrote: txn });
-  } catch (err) {
-    console.error('Digits recat-test error:', err.message);
-    res.status(500).json({ ok: false, error: err.message, attempted: txn });
-  }
-});
+// Turn a party display name into a stable, source-scoped externalId string.
+function partyExternalId(name) {
+  return 'party-' + String(name || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+}
+
+// parties: array of { externalId, name, kind }
+async function syncParties(parties) {
+  return await digitsPost('/v1/source/parties', { parties });
+}
+
+// transactions: array of SourceTransaction objects
+async function syncTransactions(transactions) {
+  return await digitsPost('/v1/source/transactions', { transactions });
+}
 
 // ─── Status ───────────────────────────────────────────────────────────────────
 
@@ -707,3 +653,13 @@ module.exports = router;
 module.exports.fetchPnL = fetchPnL;
 module.exports.digitsConfigured = digitsConfigured;
 module.exports.queryTransactions = queryTransactions;
+// Write primitives + query helper reused by the income re-categorization feature.
+module.exports.digitsQueryEntries = digitsQueryEntries;
+module.exports.ensureS2Source = ensureS2Source;
+module.exports.syncParties = syncParties;
+module.exports.syncTransactions = syncTransactions;
+module.exports.partyRef = partyRef;
+module.exports.partyExternalId = partyExternalId;
+module.exports.S2_SOURCE_EXTERNAL_ID = S2_SOURCE_EXTERNAL_ID;
+module.exports.STRIPE_PARTY_ID = STRIPE_PARTY_ID;
+module.exports.LABELS = LABELS;
