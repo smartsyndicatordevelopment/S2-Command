@@ -581,9 +581,19 @@ router.get('/cashflow', async (req, res) => {
 
 const S2_SOURCE_EXTERNAL_ID = { issuer: 'command.smartsyndicator.com', id: 's2-income-adjustments' };
 
-// Bare source create -- no labels. We reference existing categories directly by
-// ledgerId (their category_id) on transaction entries, so label resolution is not
-// needed. Income subtype in this chart of accounts is "SalesRevenue".
+// CategoryRef.ledgerId is a numeric (int64) id we don't have, so we reference
+// categories by LABEL. Each label resolves to an existing category by name + type
+// + subtype (values confirmed from the live chart of accounts).
+function catLabel(id, name, type, subtype) {
+  return {
+    label: id,
+    name,
+    constraint: [type],
+    preferAi: false,
+    search: { names: [name], type, subtype },
+  };
+}
+
 async function syncS2Source() {
   const body = {
     sources: [{
@@ -592,6 +602,15 @@ async function syncS2Source() {
       type: 'Income',
       subtype: 'SalesRevenue',
       description: 'Re-classify Stripe income into finer categories',
+      labels: [
+        // Income targets
+        catLabel('rebilling_income',   'Rebilling Income',     'Income',   'SalesRevenue'),
+        catLabel('subscription_income','Saas Income (Stripe)', 'Income',   'SalesRevenue'),
+        catLabel('consulting_income',  'Consulting Income',    'Income',   'SalesRevenue'),
+        // Offsetting legs used by Stripe payouts
+        catLabel('stripe_clearing',    'Stripe Clearing',      'Assets',   'BankAccounts'),
+        catLabel('stripe_fees',        'Stripe Fees',          'Expenses', 'GeneralOperations'),
+      ],
     }],
   };
   return await digitsPost('/v1/connection/sources', body);
@@ -630,11 +649,11 @@ router.get('/digits/recat-test', async (req, res) => {
     memo:       'Auto-Recharge for Sub-Account - Veritus Capital - Melissa Hawkins (S2 Command re-categorization to Rebilling Income)',
     entries: [
       // Leg 1 -- income, re-pointed to Rebilling Income
-      { amount: { amount: 1051, code: 'USD' }, type: 'Credit', category: { ledgerId: 'c56e026e-6897-498c-90d8-e357e356297f' }, description: 'Rebilling Income' },
+      { amount: { amount: 1051, code: 'USD' }, type: 'Credit', category: { label: 'rebilling_income' }, description: 'Rebilling Income' },
       // Leg 2 -- net settlement due from Stripe (unchanged)
-      { amount: { amount: 991,  code: 'USD' }, type: 'Debit',  category: { ledgerId: 'f042f50e-065c-413c-b83d-fbe0b9788e70' }, description: 'Net settlement due from Stripe' },
+      { amount: { amount: 991,  code: 'USD' }, type: 'Debit',  category: { label: 'stripe_clearing' }, description: 'Net settlement due from Stripe' },
       // Leg 3 -- Stripe processing fee (unchanged)
-      { amount: { amount: 60,   code: 'USD' }, type: 'Debit',  category: { ledgerId: '73f2b3c3-4d30-43ee-928c-ad887be63f38' }, description: 'Stripe processing fee' },
+      { amount: { amount: 60,   code: 'USD' }, type: 'Debit',  category: { label: 'stripe_fees' }, description: 'Stripe processing fee' },
     ],
   };
   try {
