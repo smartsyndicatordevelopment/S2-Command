@@ -94,6 +94,26 @@ export default function RecategorizeIncome() {
 
       {!loading && preview && (
         <>
+          {preview.rules?.length > 0 && (
+            <div className="rounded-lg border p-4" style={{ borderColor: 'var(--c-border)', backgroundColor: 'var(--c-card)' }}>
+              <p className="text-xs font-medium uppercase tracking-widest mb-3" style={{ color: 'var(--c-muted)' }}>Re-categorization rules</p>
+              <div className="space-y-2">
+                {preview.rules.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm flex-wrap">
+                    <span style={{ color: 'var(--c-dim)' }}>
+                      {r.fallback ? 'Otherwise' : 'If'} <span style={{ color: 'var(--c-text-primary)' }}>{r.when}</span>
+                    </span>
+                    <span style={{ color: 'var(--c-muted)' }}>→</span>
+                    <span className="px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: 'rgba(92,63,244,0.12)', color: '#8b74ff' }}>{r.categoryName}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs mt-3" style={{ color: 'var(--c-muted)' }}>
+                Rules run top to bottom -- the first match wins. You can still override any single row in the table below before applying.
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-3 flex-wrap text-xs">
             <span className="px-3 py-1.5 rounded-full" style={{ backgroundColor: 'var(--c-subtle-5)', border: '1px solid var(--c-border)', color: 'var(--c-dim)' }}>
               {preview.count} in Sales Uncategorized

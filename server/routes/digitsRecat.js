@@ -11,13 +11,34 @@ const {
 const UNCATEGORIZED = 'Sales Uncategorized';
 const ALL_LEG_TYPES = ['Income', 'Assets', 'Liabilities', 'Expenses', 'CostOfGoodsSold', 'OtherIncome', 'OtherExpenses'];
 
-// Deterministic rule (Brandon's): "subscription" in the description => subscription
-// income (Saas Income Stripe); everything else (the auto-recharges) => Rebilling.
+// Deterministic re-categorization rules. Ordered: the first matching rule wins;
+// DEFAULT_RULE applies to everything else. These same rules drive both the
+// classifier and what the UI displays, so the two can never drift apart.
+const RULES = [
+  {
+    when: 'Description contains "subscription"',
+    categoryName: 'Saas Income (Stripe)',
+    label: LABELS.subscription,
+    test: (d) => /subscription/i.test(d || ''),
+  },
+];
+const DEFAULT_RULE = {
+  when: 'Everything else (e.g. GHL "Auto-Recharge" wallet top-ups)',
+  categoryName: 'Rebilling Income',
+  label: LABELS.rebilling,
+};
+
 function classifyIncome(description) {
-  if (/subscription/i.test(description || '')) {
-    return { label: LABELS.subscription, categoryName: 'Saas Income (Stripe)' };
-  }
-  return { label: LABELS.rebilling, categoryName: 'Rebilling Income' };
+  const rule = RULES.find(r => r.test(description)) || DEFAULT_RULE;
+  return { label: rule.label, categoryName: rule.categoryName };
+}
+
+// Display-safe rule list for the UI (no test functions).
+function rulesDisplay() {
+  return [
+    ...RULES.map(r => ({ when: r.when, categoryName: r.categoryName })),
+    { when: DEFAULT_RULE.when, categoryName: DEFAULT_RULE.categoryName, fallback: true },
+  ];
 }
 
 const VALID_LABELS = new Set([LABELS.subscription, LABELS.rebilling, LABELS.consulting]);
@@ -166,6 +187,7 @@ router.get('/digits/recat/preview', async (req, res) => {
     const previewId = cachePreview(items);
     res.json({
       previewId, year, month,
+      rules: rulesDisplay(),
       count: items.length,
       subscriptionCount: items.filter(i => i.proposedLabel === LABELS.subscription).length,
       rebillingCount:    items.filter(i => i.proposedLabel === LABELS.rebilling).length,
