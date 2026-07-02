@@ -571,6 +571,57 @@ router.get('/cashflow', async (req, res) => {
   }
 });
 
+// ─── Source Sync (write) ──────────────────────────────────────────────────────
+//
+// Registers S2 Command as a Digits source with income category labels. This is a
+// WRITE (requires the source:sync scope) but it adds NO transactions to the ledger
+// -- it only creates the source and its label->category mappings. That makes it a
+// safe probe: if it succeeds, re-authorization granted write access and we are set
+// up to sync (re-categorize) transactions later.
+
+const S2_SOURCE_EXTERNAL_ID = { issuer: 'command.smartsyndicator.com', id: 's2-income-adjustments' };
+
+function incomeLabel(id, name) {
+  return {
+    label: id,
+    name,
+    constraint: ['Income'],
+    preferAi: false,
+    search: { names: [name, name.replace(/Income/i, 'Revenue')], type: 'Income', subtype: 'Revenue' },
+  };
+}
+
+async function syncS2Source() {
+  const body = {
+    sources: [{
+      externalId: S2_SOURCE_EXTERNAL_ID,
+      name: 'S2 Command Income Adjustments',
+      type: 'Income',
+      subtype: 'Revenue',
+      description: 'Source used by S2 Command to re-classify Stripe income into Subscription, Rebilling, and Consulting.',
+      labels: [
+        incomeLabel('subscription_income', 'Subscription Income'),
+        incomeLabel('rebilling_income',    'Rebilling Income'),
+        incomeLabel('consulting_income',   'Consulting Income'),
+      ],
+    }],
+  };
+  return await digitsPost('/v1/connection/sources', body);
+}
+
+// TEMPORARY probe -- confirms the source:sync scope works and registers our source
+// + income labels. Writes NO ledger transactions. Safe to open in a browser while
+// logged in. Remove after the write path is validated.
+router.get('/digits/setup-source', async (req, res) => {
+  try {
+    const result = await syncS2Source();
+    res.json({ ok: true, scope: 'source:sync appears granted', result });
+  } catch (err) {
+    console.error('Digits setup-source error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Status ───────────────────────────────────────────────────────────────────
 
 router.get('/digits/status', (req, res) => {
