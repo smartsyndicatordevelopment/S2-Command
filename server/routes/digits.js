@@ -598,7 +598,7 @@ async function syncS2Source() {
       name: 'S2 Command Income Adjustments',
       type: 'Income',
       subtype: 'Revenue',
-      description: 'Source used by S2 Command to re-classify Stripe income into Subscription, Rebilling, and Consulting.',
+      description: 'Re-classify Stripe income into finer categories',
       labels: [
         incomeLabel('subscription_income', 'Subscription Income'),
         incomeLabel('rebilling_income',    'Rebilling Income'),
