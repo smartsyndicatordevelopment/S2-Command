@@ -246,7 +246,7 @@ export default function Customers() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-white">Customers</h1>
+        <h1 className="text-lg font-semibold text-white">Recurring Customers</h1>
         <p className="text-xs text-muted mt-0.5">{subs.loading ? 'Loading from Stripe...' : `${active.length} active subscriptions -- live from Stripe`}</p>
       </div>
 

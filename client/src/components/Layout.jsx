@@ -29,7 +29,7 @@ const NAV_ITEMS = [
     children: [
       { id: 'cashflow', label: 'Cash Flow' },
       { id: 'financials', label: 'Financials' },
-      { id: 'customers', label: 'Customers' },
+      { id: 'customers', label: 'Recurring Customers' },
       { id: 'recat', label: 'Re-categorize Income' },
     ],
   },
