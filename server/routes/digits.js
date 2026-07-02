@@ -666,7 +666,9 @@ const VERITUS_DESC = 'Auto-Recharge for Sub-Account - Veritus Capital - Melissa 
 
 router.get('/digits/recat-test', async (req, res) => {
   const txn = {
-    externalId: { issuer: 'command.smartsyndicator.com', id: 'recat-veritus-20260630-1051' },
+    // Fresh externalId -- the prior one (…-1051) had its ledger artifact deleted,
+    // so re-upserting it is treated as already-resolved and never re-promotes.
+    externalId: { issuer: 'command.smartsyndicator.com', id: 'recat-veritus-20260630-1051-v2' },
     sourceId:   S2_SOURCE_EXTERNAL_ID,
     date:       '2026-06-30T12:00:00Z',
     memo:       VERITUS_DESC,
