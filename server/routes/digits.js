@@ -581,29 +581,17 @@ router.get('/cashflow', async (req, res) => {
 
 const S2_SOURCE_EXTERNAL_ID = { issuer: 'command.smartsyndicator.com', id: 's2-income-adjustments' };
 
-function incomeLabel(id, name) {
-  return {
-    label: id,
-    name,
-    constraint: ['Income'],
-    preferAi: false,
-    search: { names: [name, name.replace(/Income/i, 'Revenue')], type: 'Income', subtype: 'Revenue' },
-  };
-}
-
+// Bare source create -- no labels. We reference existing categories directly by
+// ledgerId (their category_id) on transaction entries, so label resolution is not
+// needed. Income subtype in this chart of accounts is "SalesRevenue".
 async function syncS2Source() {
   const body = {
     sources: [{
       externalId: S2_SOURCE_EXTERNAL_ID,
       name: 'S2 Command Income Adjustments',
       type: 'Income',
-      subtype: 'Revenue',
+      subtype: 'SalesRevenue',
       description: 'Re-classify Stripe income into finer categories',
-      labels: [
-        incomeLabel('subscription_income', 'Subscription Income'),
-        incomeLabel('rebilling_income',    'Rebilling Income'),
-        incomeLabel('consulting_income',   'Consulting Income'),
-      ],
     }],
   };
   return await digitsPost('/v1/connection/sources', body);
