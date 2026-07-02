@@ -635,30 +635,48 @@ async function syncTransactions(transactions) {
   return await digitsPost('/v1/source/transactions', { transactions });
 }
 
+// Parties are linked records (not text) scoped to our source. We define our own
+// -- matching to the native Stripe source's parties is by NAME similarity.
+const PARTY_VERITUS = { issuer: 'command.smartsyndicator.com', id: 'party-veritus-melissa-hawkins' };
+const PARTY_STRIPE  = { issuer: 'command.smartsyndicator.com', id: 'party-stripe' };
+
+async function syncParties() {
+  return await digitsPost('/v1/source/parties', {
+    parties: [
+      { externalId: PARTY_VERITUS, name: 'Veritus Capital - Melissa Hawkins', kind: 'Business' },
+      { externalId: PARTY_STRIPE,  name: 'Stripe', kind: 'Business' },
+    ],
+  });
+}
+
 // TEMPORARY override test. Mirrors ONE real transaction -- the Veritus Capital
 // (Melissa Hawkins) $10.51 auto-recharge on 2026-06-30 -- with leg 1 re-pointed
 // from Sales Uncategorized to Rebilling Income, keeping the Stripe Clearing and
 // Stripe Fees legs identical so Digits matches (merges) rather than duplicating.
 // We then read the ledger back to see whether the income category adopted our
 // value. Remove after the test.
+// Exact original description, mirrored for maximum matching signal.
+const VERITUS_DESC = 'Auto-Recharge for Sub-Account - Veritus Capital - Melissa Hawkins of USD 10.01 was successfully added to the wallet. Please, check the billing page for more details:\n  app.smartsyndicator.com/v2/location/4One2rsEWOV3sfWokd3V/settings/company-billing/billing. Includes Tax usd 0.5, total charged usd 10.510000';
+
 router.get('/digits/recat-test', async (req, res) => {
   const txn = {
     externalId: { issuer: 'command.smartsyndicator.com', id: 'recat-veritus-20260630-1051' },
     sourceId:   S2_SOURCE_EXTERNAL_ID,
     date:       '2026-06-30T12:00:00Z',
-    memo:       'Auto-Recharge for Sub-Account - Veritus Capital - Melissa Hawkins (S2 Command re-categorization to Rebilling Income)',
+    memo:       VERITUS_DESC,
     entries: [
-      // Leg 1 -- income, re-pointed to Rebilling Income
-      { amount: { amount: 1051, code: 'USD' }, type: 'Credit', category: { label: 'rebilling_income' }, description: 'Rebilling Income' },
-      // Leg 2 -- net settlement due from Stripe (unchanged)
-      { amount: { amount: 991,  code: 'USD' }, type: 'Debit',  category: { label: 'stripe_clearing' }, description: 'Net settlement due from Stripe' },
-      // Leg 3 -- Stripe processing fee (unchanged)
-      { amount: { amount: 60,   code: 'USD' }, type: 'Debit',  category: { label: 'stripe_fees' }, description: 'Stripe processing fee' },
+      // Leg 1 -- income, re-pointed to Rebilling Income, party = Veritus
+      { amount: { amount: 1051, code: 'USD' }, type: 'Credit', category: { label: 'rebilling_income' }, description: VERITUS_DESC, counterparty: { externalId: PARTY_VERITUS } },
+      // Leg 2 -- net settlement due from Stripe, party = Stripe
+      { amount: { amount: 991,  code: 'USD' }, type: 'Debit',  category: { label: 'stripe_clearing' }, description: 'Net settlement due from Stripe', counterparty: { externalId: PARTY_STRIPE } },
+      // Leg 3 -- Stripe processing fee, party = Stripe
+      { amount: { amount: 60,   code: 'USD' }, type: 'Debit',  category: { label: 'stripe_fees' }, description: 'Stripe processing fee', counterparty: { externalId: PARTY_STRIPE } },
     ],
   };
   try {
-    const result = await syncTransactions([txn]);
-    res.json({ ok: true, wrote: txn, result });
+    const parties = await syncParties();
+    const result  = await syncTransactions([txn]);
+    res.json({ ok: true, parties, result, wrote: txn });
   } catch (err) {
     console.error('Digits recat-test error:', err.message);
     res.status(500).json({ ok: false, error: err.message, attempted: txn });
