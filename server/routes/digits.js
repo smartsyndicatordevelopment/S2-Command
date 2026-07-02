@@ -637,8 +637,10 @@ async function syncTransactions(transactions) {
 
 // Parties are linked records (not text) scoped to our source. We define our own
 // -- matching to the native Stripe source's parties is by NAME similarity.
-const PARTY_VERITUS = { issuer: 'command.smartsyndicator.com', id: 'party-veritus-melissa-hawkins' };
-const PARTY_STRIPE  = { issuer: 'command.smartsyndicator.com', id: 'party-stripe' };
+// NOTE: on the parties endpoint externalId is a bare STRING (unlike transactions,
+// where it is an {issuer, id} object).
+const PARTY_VERITUS = 'party-veritus-melissa-hawkins';
+const PARTY_STRIPE  = 'party-stripe';
 
 async function syncParties() {
   return await digitsPost('/v1/source/parties', {
