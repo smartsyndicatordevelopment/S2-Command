@@ -3,8 +3,11 @@ const fetch = require('node-fetch');
 const { setTokens, getTokenCache, DIGITS_TOKEN_URL } = require('../lib/digitsTokens');
 
 const DIGITS_AUTH_URL = 'https://connect.digits.com/v1/oauth/authorize';
-// Read-only access to the ledger (P&L, transactions, categories). No write scopes.
-const DIGITS_SCOPE = 'ledger:read';
+// ledger:read  -- read the ledger (P&L, transactions, categories)
+// source:sync  -- write/upsert source transactions back into Digits (bulk re-categorization)
+// Space-separated; URLSearchParams encodes the space. Adding source:sync requires
+// the user to re-authorize the Digits connection (the existing token is read-only).
+const DIGITS_SCOPE = 'ledger:read source:sync';
 
 function requireAuth(req, res, next) {
   if (req.session && req.session.authenticated) return next();
