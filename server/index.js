@@ -1,3 +1,7 @@
+// better-auth (and its deps) rely on the global Web Crypto API, which Node 18 does
+// not expose as a global. Polyfill it before anything loads better-auth.
+if (!globalThis.crypto) globalThis.crypto = require('node:crypto').webcrypto;
+
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
