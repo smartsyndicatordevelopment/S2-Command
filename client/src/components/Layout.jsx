@@ -182,8 +182,9 @@ export default function Layout({ onLogout }) {
   const { theme, toggleTheme, isDemo, toggleDemo } = useApp();
 
   const handleLogout = async () => {
-    await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
-    onLogout();
+    // Clear the legacy session (transition) and the better-auth session.
+    try { await fetch('/auth/logout', { method: 'POST', credentials: 'include' }); } catch { /* ignore */ }
+    await onLogout();
   };
 
   const ActiveComponent = TAB_COMPONENTS[activeTab];

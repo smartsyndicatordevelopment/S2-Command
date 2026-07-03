@@ -33,7 +33,7 @@ const integrateRouter     = require('./routes/integrate');
 const statusRouter        = require('./routes/status');
 const businessPlanRouter  = require('./routes/businessPlan');
 const digitsRecatRouter   = require('./routes/digitsRecat');
-const { getAuth: getBetterAuth, isConfigured: betterAuthConfigured, runAuthMigrations } = require('./lib/auth');
+const { getAuth: getBetterAuth, isConfigured: betterAuthConfigured, runAuthMigrations, seedAuthCleanup } = require('./lib/auth');
 
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT_NAME;
@@ -151,8 +151,21 @@ app.use('/auth/login', loginLimiter);
 app.use('/auth', authRouter);
 app.use('/auth', digitsOAuthRouter); // /auth/digits and /auth/digits/callback
 
-// Auth middleware for all /api routes
-function requireAuth(req, res, next) {
+// Auth middleware for all /api routes. During cutover this accepts EITHER a
+// better-auth session OR the legacy express-session, so no one is locked out while
+// we migrate. The legacy branch is removed once better-auth is confirmed working.
+let fromNodeHeadersRef = null; // set at startup once better-auth/node loads
+async function requireAuth(req, res, next) {
+  try {
+    const auth = await getBetterAuth();
+    if (auth && fromNodeHeadersRef) {
+      const session = await auth.api.getSession({ headers: fromNodeHeadersRef(req.headers) });
+      if (session && session.user) { req.authUser = session.user; return next(); }
+    }
+  } catch (err) {
+    console.error('better-auth session check error:', err.message);
+  }
+  // Legacy fallback (transition only)
   if (req.session && req.session.authenticated) return next();
   return res.status(401).json({ error: 'Unauthorized' });
 }
@@ -202,10 +215,12 @@ runMigrations()
     if (betterAuthConfigured()) {
       try {
         await runAuthMigrations();
+        await seedAuthCleanup();
         const auth = await getBetterAuth();
         if (auth) {
-          const { toNodeHandler } = await import('better-auth/node');
+          const { toNodeHandler, fromNodeHeaders } = await import('better-auth/node');
           betterAuthNodeHandler = toNodeHandler(auth);
+          fromNodeHeadersRef = fromNodeHeaders; // enables requireAuth to read better-auth sessions
           console.log('better-auth active at /api/auth');
         }
       } catch (err) {
