@@ -1,12 +1,10 @@
 /**
- * better-auth server instance (email/password + 2FA + admin + passkey + Google).
+ * better-auth server instance (email/password + 2FA + admin + passkey + optional Google).
  *
- * SAFETY: this whole module is INERT until BETTER_AUTH_SECRET is set. getAuth()
- * returns null when unconfigured, so importing or deploying it changes nothing
- * about the existing express-session login until Phase-2 activation.
- *
- * better-auth is ESM-only and the server is CommonJS, so the library is pulled in
- * via dynamic import() inside an async factory.
+ * SAFETY: inert until BETTER_AUTH_SECRET is set. getAuth() and getOptions() return
+ * null when unconfigured, so nothing changes about the existing express-session
+ * login until this is activated. better-auth is ESM-only and the server is CommonJS,
+ * so the library is pulled in via dynamic import().
  */
 const { getPool } = require('./db');
 
@@ -16,10 +14,11 @@ function isConfigured() {
   return !!process.env.BETTER_AUTH_SECRET;
 }
 
-async function buildAuth() {
+// --- options (the BetterAuthOptions object; also what getMigrations() needs) ---
+let optionsPromise;
+async function buildOptions() {
   if (!isConfigured()) return null;
 
-  const { betterAuth } = await import('better-auth');
   const { twoFactor, admin } = await import('better-auth/plugins');
   const { passkey } = await import('@better-auth/passkey');
 
@@ -30,8 +29,8 @@ async function buildAuth() {
     ? { google: { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET } }
     : undefined;
 
-  return betterAuth({
-    database: getPool(),          // node-postgres Pool (validated at activation)
+  return {
+    database: getPool(),                       // node-postgres Pool
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL,
     basePath: '/api/auth',
@@ -43,19 +42,47 @@ async function buildAuth() {
       admin(),
       passkey({ rpID, rpName: 'S2 Command', origin: baseURL }),
     ],
+  };
+}
+function getOptions() {
+  if (!optionsPromise) optionsPromise = buildOptions().catch(err => {
+    console.error('better-auth options build failed:', err.message);
+    return null;
   });
+  return optionsPromise;
 }
 
-// Lazily build + cache the instance. Returns Promise<auth|null>.
-let cached;
+// --- the auth instance ---
+let authPromise;
+async function buildAuth() {
+  const opts = await getOptions();
+  if (!opts) return null;
+  const { betterAuth } = await import('better-auth');
+  return betterAuth(opts);
+}
 function getAuth() {
-  if (!cached) {
-    cached = buildAuth().catch(err => {
-      console.error('better-auth init failed (staying on express-session):', err.message);
-      return null;
-    });
-  }
-  return cached;
+  if (!authPromise) authPromise = buildAuth().catch(err => {
+    console.error('better-auth init failed (staying on express-session):', err.message);
+    return null;
+  });
+  return authPromise;
 }
 
-module.exports = { getAuth, isConfigured, DEFAULT_BASE_URL };
+// --- migrations (create better-auth's own tables). NON-FATAL by design: any
+// failure logs and leaves better-auth inactive, but never crashes the app. ---
+async function runAuthMigrations() {
+  try {
+    const opts = await getOptions();
+    if (!opts) return { ran: false, reason: 'not configured' };
+    const { getMigrations } = await import('better-auth/db/migration');
+    const { runMigrations, toBeCreated, toBeAdded } = await getMigrations(opts);
+    await runMigrations();
+    console.log(`better-auth migrations applied (${toBeCreated.length} created, ${toBeAdded.length} altered)`);
+    return { ran: true };
+  } catch (err) {
+    console.error('better-auth migration error (non-fatal):', err.message);
+    return { ran: false, error: err.message };
+  }
+}
+
+module.exports = { getAuth, getOptions, isConfigured, runAuthMigrations, DEFAULT_BASE_URL };

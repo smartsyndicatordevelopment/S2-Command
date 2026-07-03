@@ -29,6 +29,7 @@ const integrateRouter     = require('./routes/integrate');
 const statusRouter        = require('./routes/status');
 const businessPlanRouter  = require('./routes/businessPlan');
 const digitsRecatRouter   = require('./routes/digitsRecat');
+const { getAuth: getBetterAuth, isConfigured: betterAuthConfigured, runAuthMigrations } = require('./lib/auth');
 
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT_NAME;
@@ -40,6 +41,17 @@ app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
 }));
+
+// better-auth handler -- mounted BEFORE express.json (it reads the raw body) and
+// OUTSIDE the /api requireAuth gate (login must be reachable unauthenticated). The
+// actual handler loads async during startup; until then (or when unconfigured) this
+// returns 503, so the route is inert and the existing express-session login is
+// completely unaffected.
+let betterAuthNodeHandler = null;
+app.all('/api/auth/*', (req, res) => {
+  if (betterAuthNodeHandler) return betterAuthNodeHandler(req, res);
+  return res.status(503).json({ error: 'auth not configured' });
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -180,6 +192,22 @@ runMigrations()
     await require('./lib/digitsTokens').init().catch(err =>
       console.error('Digits token init failed:', err.message)
     );
+
+    // Activate better-auth if configured -- run its own (non-fatal) migrations, then
+    // load the request handler. All wrapped so it can never block server startup.
+    if (betterAuthConfigured()) {
+      try {
+        await runAuthMigrations();
+        const auth = await getBetterAuth();
+        if (auth) {
+          const { toNodeHandler } = await import('better-auth/node');
+          betterAuthNodeHandler = toNodeHandler(auth);
+          console.log('better-auth active at /api/auth');
+        }
+      } catch (err) {
+        console.error('better-auth activation failed (non-fatal):', err.message);
+      }
+    }
 
     app.listen(PORT, () => {
       console.log(`S2 Command running on port ${PORT}`);
