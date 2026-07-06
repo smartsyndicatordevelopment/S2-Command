@@ -151,9 +151,8 @@ app.use('/auth/login', loginLimiter);
 app.use('/auth', authRouter);
 app.use('/auth', digitsOAuthRouter); // /auth/digits and /auth/digits/callback
 
-// Auth middleware for all /api routes. During cutover this accepts EITHER a
-// better-auth session OR the legacy express-session, so no one is locked out while
-// we migrate. The legacy branch is removed once better-auth is confirmed working.
+// Auth middleware for all /api routes -- better-auth sessions only (the legacy
+// shared-password path has been fully removed).
 let fromNodeHeadersRef = null; // set at startup once better-auth/node loads
 async function requireAuth(req, res, next) {
   try {
@@ -165,8 +164,6 @@ async function requireAuth(req, res, next) {
   } catch (err) {
     console.error('better-auth session check error:', err.message);
   }
-  // Legacy fallback (transition only)
-  if (req.session && req.session.authenticated) return next();
   return res.status(401).json({ error: 'Unauthorized' });
 }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, CheckCircle2, AlertTriangle, XCircle, MinusCircle } from 'lucide-react';
+import AccountSecurity from '../components/AccountSecurity';
 
 // Status -> visual mapping. This project already uses a green/yellow/red
 // convention across the dashboard, so integration health follows suit.
@@ -129,6 +130,13 @@ export default function Settings() {
           <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
           {loading ? 'Checking...' : 'Recheck'}
         </button>
+      </div>
+
+      {/* Account security -- 2FA, passkeys, password */}
+      <AccountSecurity />
+
+      <div className="pt-2 border-t" style={{ borderColor: 'var(--c-border)' }}>
+        <p className="text-xs font-medium uppercase tracking-widest mb-3" style={{ color: 'var(--c-muted)' }}>Integrations</p>
       </div>
 
       {/* Summary bar */}
