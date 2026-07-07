@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const fetch  = require('node-fetch');
+const metricsCache = require('../lib/metricsCache');
 
 const GHL_BASE    = 'https://services.leadconnectorhq.com';
 const GHL_VERSION = '2021-07-28';
@@ -13,6 +14,76 @@ async function withRetry(fn, attempts = 3) {
     }
   }
 }
+
+// ─── Reusable read helper + cached computations ───────────────────────────────
+
+async function ghlGet(endpoint, queryParams = {}) {
+  const apiKey = process.env.GHL_API_KEY;
+  const locationId = process.env.GHL_LOCATION_ID;
+  if (!apiKey) throw new Error('GHL_API_KEY not configured');
+  const qs = new URLSearchParams(Object.fromEntries(
+    Object.entries({ locationId, ...queryParams }).filter(([, v]) => v != null && v !== '')
+  ));
+  return withRetry(async () => {
+    const r = await fetch(`${GHL_BASE}${endpoint}?${qs}`, {
+      headers: { Authorization: `Bearer ${apiKey}`, Version: GHL_VERSION, Accept: 'application/json' },
+    });
+    if (!r.ok && r.status !== 200) throw new Error(`GHL API ${r.status} for ${endpoint}`);
+    return r.json();
+  });
+}
+
+// Pipeline: opportunity count, total value, and per-stage breakdown.
+async function computeGhlPipeline() {
+  const data = await ghlGet('/opportunities/search', { limit: '100' });
+  const opps = data.opportunities || [];
+  const byStage = {};
+  let totalValue = 0;
+  for (const opp of opps) {
+    const stage = opp.pipelineStageId || 'Unknown';
+    const stageName = opp.pipelineStageName || opp.pipelineStageId || 'Unknown';
+    if (!byStage[stage]) byStage[stage] = { name: stageName, count: 0, value: 0 };
+    byStage[stage].count++;
+    byStage[stage].value += parseFloat(opp.monetaryValue || 0);
+    totalValue += parseFloat(opp.monetaryValue || 0);
+  }
+  return {
+    totalOpportunities: opps.length,
+    totalPipelineValue: totalValue,
+    byStage: Object.values(byStage).sort((a, b) => b.count - a.count),
+  };
+}
+
+// Contacts: total count.
+async function computeGhlContacts() {
+  let totalContacts = null;
+  try {
+    const allData = await ghlGet('/contacts/', { limit: '1' });
+    totalContacts = allData.meta?.total ?? allData.total ?? null;
+  } catch (err) {
+    console.error('computeGhlContacts error:', err.message);
+  }
+  return { totalContacts, recentContacts30d: null };
+}
+
+// Cache-first reader: serve from server_cache, fall back to a live compute + store.
+function cachedReader(cacheKey, compute) {
+  return async (req, res) => {
+    try {
+      const cached = await metricsCache.get(cacheKey);
+      if (cached) return res.json({ ...cached.data, cachedAt: cached.computedAt });
+      const data = await compute();
+      await metricsCache.set(cacheKey, data);
+      res.json(data);
+    } catch (err) {
+      console.error(`GHL ${cacheKey} error:`, err.message);
+      res.status(500).json({ error: `Failed to fetch ${cacheKey}` });
+    }
+  };
+}
+
+router.get('/ghl/pipeline', cachedReader('ghl:pipeline', computeGhlPipeline));
+router.get('/ghl/contacts', cachedReader('ghl:contacts', computeGhlContacts));
 
 // GET /api/ghl/config
 router.get('/ghl/config', (req, res) => {
@@ -81,3 +152,6 @@ router.post('/ghl/proxy', async (req, res) => {
 });
 
 module.exports = router;
+// Exported so the sync runner / metricsCache can warm these in the background.
+module.exports.computeGhlPipeline = computeGhlPipeline;
+module.exports.computeGhlContacts = computeGhlContacts;

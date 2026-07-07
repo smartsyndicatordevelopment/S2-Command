@@ -57,6 +57,25 @@ async function warmAll() {
     } else {
       console.error('[MetricsCache] stripe:revenue failed:', rev.reason?.message);
     }
+
+    // GHL reads -- cached so the dashboard/agent serve from Postgres instead of a
+    // live LeadConnector call every time. Refreshed on the same sync interval.
+    if (process.env.GHL_API_KEY) {
+      const { computeGhlPipeline, computeGhlContacts } = require('../routes/ghl');
+      const [pipe, contacts] = await Promise.allSettled([computeGhlPipeline(), computeGhlContacts()]);
+      if (pipe.status === 'fulfilled') {
+        await set('ghl:pipeline', pipe.value);
+        console.log('[MetricsCache] ghl:pipeline cached');
+      } else {
+        console.error('[MetricsCache] ghl:pipeline failed:', pipe.reason?.message);
+      }
+      if (contacts.status === 'fulfilled') {
+        await set('ghl:contacts', contacts.value);
+        console.log('[MetricsCache] ghl:contacts cached');
+      } else {
+        console.error('[MetricsCache] ghl:contacts failed:', contacts.reason?.message);
+      }
+    }
   } catch (err) {
     console.error('[MetricsCache] warmAll error:', err.message);
   }

@@ -5,6 +5,7 @@ const fetch = require('node-fetch');
 const { query } = require('../lib/db');
 const { fetchPnL: digitsFetchPnL, queryTransactions: digitsQueryTransactions } = require('./digits');
 const { readPlan: readBusinessPlan, updatePlan: updateBusinessPlan } = require('./businessPlan');
+const metricsCache = require('../lib/metricsCache');
 
 const AGENT = 'overview';
 
@@ -178,6 +179,10 @@ async function ghlGet(endpoint, queryParams) {
 }
 
 async function toolGetGhlPipeline() {
+  // Serve the background-cached pipeline when available (refreshed by the sync
+  // runner); fall back to a live call on a cold cache.
+  const cached = await metricsCache.get('ghl:pipeline');
+  if (cached) return { ...cached.data, cachedAt: cached.computedAt };
   const data = await ghlGet('/opportunities/search', { limit: '100' });
   const opps = data.opportunities || [];
   const byStage = {};
@@ -198,6 +203,8 @@ async function toolGetGhlPipeline() {
 }
 
 async function toolGetGhlContacts() {
+  const cached = await metricsCache.get('ghl:contacts');
+  if (cached) return { ...cached.data, cachedAt: cached.computedAt };
   // GHL's GET /contacts/ rejects a startAfterDate query with HTTP 422, and the
   // two lookups were in one Promise.all -- so the 30-day query failing took the
   // whole tool down. Fetch the total independently; the 30-day-new count needs
