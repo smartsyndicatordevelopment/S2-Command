@@ -34,8 +34,10 @@ async function ghlGet(endpoint, queryParams = {}) {
 }
 
 // Pipeline: opportunity count, total value, and per-stage breakdown.
+// NOTE: /opportunities/search requires location_id (snake_case), unlike most GHL
+// endpoints which take locationId.
 async function computeGhlPipeline() {
-  const data = await ghlGet('/opportunities/search', { limit: '100' });
+  const data = await ghlGet('/opportunities/search', { location_id: process.env.GHL_LOCATION_ID, limit: '100' });
   const opps = data.opportunities || [];
   const byStage = {};
   let totalValue = 0;

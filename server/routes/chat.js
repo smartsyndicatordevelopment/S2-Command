@@ -183,7 +183,8 @@ async function toolGetGhlPipeline() {
   // runner); fall back to a live call on a cold cache.
   const cached = await metricsCache.get('ghl:pipeline');
   if (cached) return { ...cached.data, cachedAt: cached.computedAt };
-  const data = await ghlGet('/opportunities/search', { limit: '100' });
+  // /opportunities/search needs location_id (snake_case), unlike most GHL endpoints.
+  const data = await ghlGet('/opportunities/search', { location_id: process.env.GHL_LOCATION_ID, limit: '100' });
   const opps = data.opportunities || [];
   const byStage = {};
   let totalValue = 0;
