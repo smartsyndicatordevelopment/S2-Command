@@ -161,8 +161,11 @@ async function ghlGet(endpoint, queryParams) {
   const apiKey     = process.env.GHL_API_KEY;
   const locationId = process.env.GHL_LOCATION_ID;
   if (!apiKey) throw new Error('GHL_API_KEY not configured');
+  // Don't auto-attach locationId when the caller supplies location_id/locationId
+  // (e.g. /opportunities/search rejects a stray locationId with 422).
+  const hasLoc = queryParams && ('location_id' in queryParams || 'locationId' in queryParams);
   const qs = new URLSearchParams(Object.fromEntries(
-    Object.entries({ locationId, ...queryParams }).filter(([, v]) => v != null && v !== '')
+    Object.entries(hasLoc ? queryParams : { locationId, ...queryParams }).filter(([, v]) => v != null && v !== '')
   ));
   for (let i = 0; i < 3; i++) {
     try {

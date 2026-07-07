@@ -21,8 +21,12 @@ async function ghlGet(endpoint, queryParams = {}) {
   const apiKey = process.env.GHL_API_KEY;
   const locationId = process.env.GHL_LOCATION_ID;
   if (!apiKey) throw new Error('GHL_API_KEY not configured');
+  // Auto-attach locationId, but NOT when the caller already supplies location_id/
+  // locationId -- some endpoints (e.g. /opportunities/search) 422 on a stray locationId.
+  const hasLoc = 'location_id' in queryParams || 'locationId' in queryParams;
+  const merged = hasLoc ? queryParams : { locationId, ...queryParams };
   const qs = new URLSearchParams(Object.fromEntries(
-    Object.entries({ locationId, ...queryParams }).filter(([, v]) => v != null && v !== '')
+    Object.entries(merged).filter(([, v]) => v != null && v !== '')
   ));
   return withRetry(async () => {
     const r = await fetch(`${GHL_BASE}${endpoint}?${qs}`, {
