@@ -1,27 +1,27 @@
 import Card from '../components/ui/Card';
 
 const POSITIONING = {
-  tagline: 'The CRM built for capital raisers.',
-  oneLinear: 'Smart Syndicator gives real estate syndicators a professional investor portal, pipeline CRM, and compliance workflow -- so they can raise capital faster without the spreadsheet chaos.',
-  category: 'Investor CRM / Capital Raising Platform',
-  differentiation: 'Built exclusively for syndicators, not adapted from a generic CRM.',
+  tagline: 'Your investor pipeline, installed for you.',
+  oneLinear: 'Smart Syndicator is the done-for-you capital-raising system: we build the CRM, import and segment the investor list, load the first campaigns, then coach members on one weekly live call until raising feels routine.',
+  category: 'Capital Raising Operating System (CROS) -- compared against coaching programs and DFY agencies, never against CRMs',
+  differentiation: 'The system is installed and managed for you, with a practitioner on a weekly live call -- not software you configure alone.',
 };
 
 const VALUE_PROPS = [
   {
-    headline: 'Professional from day one',
-    body: 'LPs see a branded investor portal the moment you onboard them -- no more emailing PDFs or sharing Dropbox links.',
+    headline: 'Live in days, not months',
+    body: 'The $2,000 buildout ships a working system: CRM configured, investor list imported and segmented, first campaigns loaded, automations on. Most members see their first investor response within 10 days.',
     audience: 'All',
   },
   {
     headline: 'Never miss a follow-up',
-    body: 'Pipeline stages, automated reminders, and deal-level tracking keep every investor relationship organized without extra staff.',
+    body: 'Capital-raising pipelines, automated nurture, and deal-level tracking keep every investor relationship warm without extra staff.',
     audience: 'Operators with 10+ investors',
   },
   {
-    headline: 'Compliance built in',
-    body: 'Track accreditation status, subscription agreements, and K-1 delivery in one place -- audit-ready at all times.',
-    audience: 'Operators planning multiple raises',
+    headline: 'A practitioner in your corner',
+    body: 'One weekly live call with Brandon -- technical help, capital coaching, and a peer community of active syndicators in a single session.',
+    audience: 'Builders raising their first $1M',
   },
   {
     headline: 'Scale without chaos',
@@ -33,29 +33,29 @@ const VALUE_PROPS = [
 const OBJECTIONS = [
   {
     objection: '"I already have a system."',
-    reframe: 'What system? If it\'s a spreadsheet, that\'s not a system -- it\'s a liability. If it\'s a generic CRM, it wasn\'t built for syndication compliance.',
+    reframe: 'What system? If it\'s a spreadsheet, that\'s not a system -- it\'s a liability. If it\'s a generic CRM, nobody installed it for capital raising, nobody manages it, and nobody coaches you on raising with it.',
   },
   {
     objection: '"It\'s too expensive."',
-    reframe: 'One missed investor follow-up on a $5M raise costs you more than a year of Smart Syndicator. What\'s your current system costing you in deals you don\'t close?',
+    reframe: 'Compared to what? Capital-raising coaching programs and masterminds run $5,000-$25,000 a year and hand you homework. For $2,000 down and $297 a month you get the system built for you AND the weekly coaching. One closed investor covers years of it.',
   },
   {
     objection: '"I\'m not tech-savvy."',
-    reframe: 'If you can use email and GHL, you can use Smart Syndicator. Onboarding takes one session. Your LPs never touch the backend.',
+    reframe: 'You never build anything -- the team installs and manages the platform. If you can join one call a week, you can run this. Your LPs never touch the backend.',
   },
   {
     objection: '"I\'ll set it up after my next raise."',
-    reframe: 'The raise is exactly when you need it. The pain of managing investor updates mid-raise without a system is what drives operators to us.',
+    reframe: 'The raise is exactly when you need it. Managing investor updates mid-raise without a system is the pain that brings operators to us -- and the buildout takes days, not months.',
   },
 ];
 
 const COPY_HOOKS = [
+  { context: 'Ad headline', text: 'Your investor pipeline, installed for you.' },
   { context: 'Ad headline', text: 'Stop managing investors in a spreadsheet.' },
-  { context: 'Ad headline', text: 'Your LPs deserve better than a Google Sheet.' },
   { context: 'Email subject', text: 'How are you tracking your investors right now?' },
   { context: 'Email subject', text: 'Before your next raise: one thing to fix.' },
   { context: 'CTA', text: 'See it in 15 minutes.' },
-  { context: 'CTA', text: 'Start your first deal free.' },
+  { context: 'CTA', text: 'Book a demo -- live in days.' },
 ];
 
 export default function Messaging() {
