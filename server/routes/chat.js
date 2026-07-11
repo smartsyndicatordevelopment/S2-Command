@@ -807,7 +807,7 @@ const TOOLS = [
   },
   {
     name: 'get_business_plan',
-    description: 'Fetch the current Business Plan document (the content shown on the Business Plan page): vision statement, growth roadmap phases, competitive moat, and risk register. ALWAYS call this before update_business_plan so you edit the real current content rather than guessing.',
+    description: 'Fetch the current Business Plan document (the content shown on the Business Plan page): vision statement, growth roadmap phases, competitive moat, risk register, and the CROS cost comparison (Smart Syndicator vs assemble-it-yourself, used as a sales/marketing tool). ALWAYS call this before update_business_plan so you edit the real current content rather than guessing.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -854,6 +854,34 @@ const TOOLS = [
             },
             required: ['risk', 'mitigation'],
           },
+        },
+        costComparison: {
+          type: 'object',
+          description: 'Complete replacement CROS cost comparison (the sales/marketing tool on the Business Plan page). Shape: { headline, positioning, ssLabel, ssTotal, ssDetail, diyLabel, diyTotal, diyDetail, rows: [{ item, diy, ss }], footnote }. Pass the whole object with every field.',
+          properties: {
+            headline:    { type: 'string' },
+            positioning: { type: 'string' },
+            ssLabel:     { type: 'string' },
+            ssTotal:     { type: 'string' },
+            ssDetail:    { type: 'string' },
+            diyLabel:    { type: 'string' },
+            diyTotal:    { type: 'string' },
+            diyDetail:   { type: 'string' },
+            rows: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  item: { type: 'string' },
+                  diy:  { type: 'string' },
+                  ss:   { type: 'string' },
+                },
+                required: ['item', 'diy', 'ss'],
+              },
+            },
+            footnote: { type: 'string' },
+          },
+          required: ['headline', 'positioning', 'ssLabel', 'ssTotal', 'ssDetail', 'diyLabel', 'diyTotal', 'diyDetail', 'rows', 'footnote'],
         },
         preview_description: { type: 'string', description: 'Plain-English summary of exactly what is changing, shown to Brandon for approval, e.g. "Update Phase 2 MRR target from $20K to $30K and add a risk about API reliability".' },
       },
@@ -954,8 +982,8 @@ function buildSystemPrompt(ctx) {
     `- create_clickup_task(list_id, name, assignee_ids, due_date, description, preview_description) -- create and assign a task. ALWAYS call get_clickup_workspace FIRST to resolve the list_id and assignee user ids by name. Returns a pending approval -- do not assume it executed. If the list or assignee is ambiguous, ask Brandon which one.`,
     ``,
     `Business Plan (the Business Plan page content):`,
-    `- get_business_plan             -- read the current vision, roadmap phases, competitive moat, and risk register`,
-    `- update_business_plan(vision?, phases?, moat?, risks?, preview_description) -- edit the plan. ALWAYS call get_business_plan first, then pass only the section(s) you are changing. For phases/moat/risks pass the COMPLETE new array (it replaces that whole section). Returns a pending approval -- do not assume it saved.`,
+    `- get_business_plan             -- read the current vision, roadmap phases, competitive moat, risk register, and CROS cost comparison`,
+    `- update_business_plan(vision?, phases?, moat?, risks?, costComparison?, preview_description) -- edit the plan. ALWAYS call get_business_plan first, then pass only the section(s) you are changing. For phases/moat/risks pass the COMPLETE new array, and for costComparison the COMPLETE new object (each replaces that whole section). Returns a pending approval -- do not assume it saved.`,
     ``,
     `Anything else (orchestrator):`,
     `- agent_api(platform, method, endpoint, body, preview_description) -- direct access to ghl, clickup, make, fb, or digits. Do anything the dedicated agents can, including writes (send SMS, create/update/delete contacts, tasks, opportunities, scenarios, campaigns). GET runs now; POST/PUT/PATCH/DELETE require Brandon's approval -- never assume a write executed. Use the specific tools above for common reads; use agent_api for everything else.`,
@@ -1155,7 +1183,7 @@ router.post('/chat/execute', async (req, res) => {
     const { type, ...partial } = action; // everything except the discriminator is plan content
     try {
       await updateBusinessPlan(partial);
-      const changed = ['vision', 'phases', 'moat', 'risks'].filter(k => partial[k] !== undefined);
+      const changed = ['vision', 'phases', 'moat', 'risks', 'costComparison'].filter(k => partial[k] !== undefined);
       const reply = `Business plan updated${changed.length ? ` (${changed.join(', ')})` : ''}.`;
       await logResult(reply);
       return res.json({ reply });
