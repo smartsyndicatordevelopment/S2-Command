@@ -1003,13 +1003,43 @@ const MAX_MESSAGE_LEN = 4000;
 const MAX_HISTORY_ENTRIES = 40;
 const MAX_HISTORY_CONTENT_LEN = 10000;
 
-router.post('/chat', async (req, res) => {
-  const { message, history, context, sessionId } = req.body;
+// Image attachments (pasted or dropped into the Overview agent). Anthropic vision
+// accepts base64 jpeg/png/gif/webp up to 5MB each; cap the count so one request
+// stays within the 12mb body limit set in index.js.
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+const MAX_IMAGES = 6;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
-  if (!message || typeof message !== 'string' || !message.trim()) {
-    return res.status(400).json({ error: 'message required' });
+function sanitizeImages(images) {
+  if (!Array.isArray(images)) return [];
+  const out = [];
+  for (const img of images.slice(0, MAX_IMAGES)) {
+    if (!img || typeof img !== 'object') continue;
+    const media_type = img.media_type;
+    let data = img.data;
+    if (!ALLOWED_IMAGE_TYPES.has(media_type) || typeof data !== 'string') continue;
+    // Strip a data-URL prefix defensively -- the client should send raw base64.
+    const marker = data.indexOf('base64,');
+    if (marker !== -1) data = data.slice(marker + 'base64,'.length);
+    data = data.trim();
+    if (!data) continue;
+    // base64 decodes to ~3/4 of its length in bytes.
+    if (Math.floor(data.length * 0.75) > MAX_IMAGE_BYTES) continue;
+    out.push({ type: 'image', source: { type: 'base64', media_type, data } });
   }
-  if (message.length > MAX_MESSAGE_LEN) {
+  return out;
+}
+
+router.post('/chat', async (req, res) => {
+  const { message, history, context, sessionId, images } = req.body;
+
+  const safeImages = sanitizeImages(images);
+  const hasText = typeof message === 'string' && !!message.trim();
+
+  if (!hasText && safeImages.length === 0) {
+    return res.status(400).json({ error: 'message or image required' });
+  }
+  if (typeof message === 'string' && message.length > MAX_MESSAGE_LEN) {
     return res.status(400).json({ error: 'message too long (max 4000 characters)' });
   }
 
@@ -1021,19 +1051,31 @@ router.post('/chat', async (req, res) => {
     ytdRevenue:        Number((context || {}).ytdRevenue)        || 0,
   };
 
-  // Validate history: only known roles, string content, bounded length
+  // Validate history: only known roles, non-empty string content, bounded length
   const safeHistory = Array.isArray(history)
     ? history
         .slice(-MAX_HISTORY_ENTRIES)
-        .filter(m => VALID_ROLES.has(m?.role) && typeof m?.content === 'string')
+        .filter(m => VALID_ROLES.has(m?.role) && typeof m?.content === 'string' && m.content.trim())
         .map(m => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_CONTENT_LEN) }))
     : [];
 
-  const userMessage = message.trim();
+  const userMessage = hasText ? message.trim() : '';
   const systemPrompt = buildSystemPrompt(safeContext);
+
+  // Current turn: image blocks (if any) followed by the text. Anthropic needs a
+  // non-empty text block, so fall back to a neutral prompt when only images are sent.
+  const userContent = safeImages.length
+    ? [...safeImages, { type: 'text', text: userMessage || 'Please review the attached image(s).' }]
+    : userMessage;
+
+  // What we persist to the transcript -- base64 images are never stored; a marker
+  // stands in so the reopened chat reads sensibly.
+  const persistedUserText = userMessage ||
+    `[${safeImages.length} image${safeImages.length > 1 ? 's' : ''} attached]`;
+
   let messages = [
     ...safeHistory,
-    { role: 'user', content: userMessage },
+    { role: 'user', content: userContent },
   ];
 
   let attempts = 3;
@@ -1051,7 +1093,7 @@ router.post('/chat', async (req, res) => {
 
         if (response.stop_reason === 'end_turn') {
           const text = response.content.find(b => b.type === 'text')?.text || '';
-          await persistMessages(sessionId, userMessage, text);
+          await persistMessages(sessionId, persistedUserText, text);
           return res.json({ reply: text });
         }
 
@@ -1064,7 +1106,7 @@ router.post('/chat', async (req, res) => {
             // Persist the turn now so the request + proposal survive a reload even
             // before the action is approved. The approval/result is appended later
             // by /chat/execute.
-            await persistMessages(sessionId, userMessage, claudeText || `(Proposed an action for approval: ${preview_description})`);
+            await persistMessages(sessionId, persistedUserText, claudeText || `(Proposed an action for approval: ${preview_description})`);
             return res.json({
               type:    'pending_action',
               message: claudeText,
@@ -1105,7 +1147,7 @@ router.post('/chat', async (req, res) => {
         // Unexpected stop reason -- return whatever text exists
         const text = response.content.find(b => b.type === 'text')?.text || '';
         const reply = text || 'No response generated.';
-        await persistMessages(sessionId, userMessage, reply);
+        await persistMessages(sessionId, persistedUserText, reply);
         return res.json({ reply });
       }
     } catch (err) {

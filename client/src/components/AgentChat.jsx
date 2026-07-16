@@ -31,8 +31,9 @@ export function timeAgo(iso) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export function Message({ role, content }) {
+export function Message({ role, content, images }) {
   const isUser = role === 'user';
+  const imgs = Array.isArray(images) ? images : [];
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
@@ -43,10 +44,24 @@ export function Message({ role, content }) {
           lineHeight: '1.7',
         }}
       >
-        {isUser
+        {imgs.length > 0 && (
+          <div className={`flex flex-wrap gap-2 ${content ? 'mb-2' : ''}`}>
+            {imgs.map((src, i) => (
+              <a key={i} href={src} target="_blank" rel="noreferrer" className="block">
+                <img
+                  src={src}
+                  alt={`attachment ${i + 1}`}
+                  className="rounded-md object-cover"
+                  style={{ maxWidth: '180px', maxHeight: '180px', border: '1px solid rgba(255,255,255,0.25)' }}
+                />
+              </a>
+            ))}
+          </div>
+        )}
+        {content && (isUser
           ? <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>
           : <SimpleMarkdown content={content} />
-        }
+        )}
       </div>
     </div>
   );

@@ -57,8 +57,10 @@ app.all('/api/auth/*', (req, res) => {
   return res.status(503).json({ error: 'auth not configured' });
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 12mb ceiling so the Overview agent can accept pasted/dropped images (base64) --
+// the chat route caps individual images at 5mb and 6 per message.
+app.use(express.json({ limit: '12mb' }));
+app.use(express.urlencoded({ extended: true, limit: '12mb' }));
 
 // Disable TRACE and other unused HTTP methods
 app.use((req, res, next) => {
