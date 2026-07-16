@@ -256,6 +256,8 @@ async function digitsQueryEntries(filters, maxPages = 6) {
 }
 
 const EXPENSE_CATEGORY_TYPES = ['Expenses', 'CostOfGoodsSold', 'OtherExpenses'];
+const INCOME_CATEGORY_TYPES  = ['Income', 'OtherIncome'];
+const PNL_CATEGORY_TYPES     = [...INCOME_CATEGORY_TYPES, ...EXPENSE_CATEGORY_TYPES];
 const SOFTWARE_RE  = /software|saas|subscription|\bapps?\b|cloud|platform|\btool/i;
 const MARKETING_RE = /advertis|marketing|promo|social media|ad spend|\bads\b/i;
 
@@ -445,6 +447,44 @@ router.get('/marketing-spend', async (req, res) => {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+// Itemized line items for each Sankey category node. Queries the ledger once for
+// the same period and buckets every income/expense entry under its category name
+// so the frontend can show a per-category transaction list on hover. Keyed by the
+// exact category name (the Sankey leaf node's name); each list is sorted newest
+// first and capped so a single popup payload stays small.
+const TXNS_PER_CATEGORY_CAP = 200;
+
+async function txnsByCategory({ startDate, endDate }) {
+  const details = await digitsQueryEntries({
+    occurredAfter:  new Date(startDate).toISOString(),
+    occurredBefore: new Date(`${endDate}T23:59:59`).toISOString(),
+    categoryTypes:  PNL_CATEGORY_TYPES,
+  });
+
+  const byCat = {};
+  for (const ed of details) {
+    const e = ed.entry || {};
+    const cat = e.category?.name;
+    if (!cat) continue;
+    const amount = typeof e.amount?.amount === 'number' ? e.amount.amount / 100 : 0;
+    if (!amount) continue;
+    const date = (ed.date || '').split('T')[0];
+    if (!date) continue;
+    (byCat[cat] = byCat[cat] || []).push({
+      date,
+      description:  e.description || null,
+      counterparty: e.counterparty?.name || null,
+      amount:       round2(amount), // signed: negative = money out
+    });
+  }
+
+  for (const cat of Object.keys(byCat)) {
+    byCat[cat].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    if (byCat[cat].length > TXNS_PER_CATEGORY_CAP) byCat[cat] = byCat[cat].slice(0, TXNS_PER_CATEGORY_CAP);
+  }
+  return byCat;
+}
+
 // Like collectLeaves but keeps the signed dollar amount (income contras are negative).
 function collectSignedLeaves(node, out) {
   const kids = childrenOf(node);
@@ -558,12 +598,23 @@ router.get('/cashflow', async (req, res) => {
     const statement = await withRetry(() =>
       digitsGet('/v1/ledger/statement/profit-and-loss', { interval, startDate, endDate })
     );
+
+    // Per-category line items for the hover popup. Best-effort: if the ledger
+    // query fails, the chart still renders -- categories just have no drilldown.
+    let transactionsByCategory = {};
+    try {
+      transactionsByCategory = await txnsByCategory({ startDate, endDate });
+    } catch (err) {
+      console.error('Digits /cashflow line-item error:', err.message);
+    }
+
     res.json({
       year,
       month: month >= 1 && month <= 12 ? month : null,
       startDate,
       endDate,
       ...buildCashflow(statement),
+      transactionsByCategory,
     });
   } catch (err) {
     console.error('Digits /cashflow error:', err.message);
