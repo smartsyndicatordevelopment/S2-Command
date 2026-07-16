@@ -165,7 +165,6 @@ function HoverPopup({ hover }) {
   const txns = hover.transactions || [];
   const accent = NODE_COLORS[kind] || 'var(--c-text-primary)';
   const total = txns.reduce((s, t) => s + Math.abs(t.amount), 0);
-  const slices = vendorSlices(txns);
 
   return (
     <div style={base}>
@@ -178,14 +177,6 @@ function HoverPopup({ hover }) {
       {txns.length === 0 ? (
         <div className="px-3 py-3 text-xs" style={{ color: 'var(--c-muted)' }}>
           No itemized transactions for this period.
-        </div>
-      ) : slices.length < 2 ? (
-        // A single vendor makes a pie meaningless -- show a compact summary instead.
-        <div className="px-3 py-3 flex items-center justify-between gap-2 text-xs">
-          <span className="truncate" style={{ color: 'var(--c-text-primary)' }}>{slices[0]?.name || '—'}</span>
-          <span className="font-mono flex-shrink-0" style={{ color: 'var(--c-muted)' }}>
-            {txns.length} txn{txns.length === 1 ? '' : 's'}
-          </span>
         </div>
       ) : (
         <CategoryPie txns={txns} total={total} accent={accent} stacked />
@@ -237,8 +228,9 @@ function Segmented({ label, options, value, onChange }) {
 function CategoryPie({ txns, total, accent, stacked = false }) {
   const slices = useMemo(() => vendorSlices(txns), [txns]);
 
-  // A single-vendor pie carries no information -- skip it.
-  if (slices.length < 2) return null;
+  // Render even a single vendor as a full 100% donut so the animation is
+  // consistent across categories; only skip when there is nothing at all.
+  if (!slices.length) return null;
 
   const size = stacked ? 128 : 150;
 
