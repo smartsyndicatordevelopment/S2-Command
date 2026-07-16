@@ -39,9 +39,30 @@ const fmt = (n) =>
 const fmtCents = (n) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n || 0);
 
+// Slice palette for the category breakdown pie -- purple-led to match the brand,
+// with warm/cool alternates so adjacent slices stay distinct.
+const PIE_COLORS = ['#5c3ff4', '#d98a3d', '#22c55e', '#8b7cf6', '#e0a458', '#4ade80', '#a78bfa', '#f0b968', '#6b7280'];
+
+// Roll a category's transactions into vendor slices: top 7 by spend, the rest
+// bucketed into "Other". Shared by the hover popup and the detail modal.
+function vendorSlices(txns) {
+  const map = {};
+  for (const t of txns || []) {
+    const key = t.counterparty || t.description || 'Uncategorized';
+    map[key] = (map[key] || 0) + Math.abs(t.amount);
+  }
+  const sorted = Object.entries(map)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+  const TOP = 7;
+  if (sorted.length <= TOP + 1) return sorted;
+  const rest = sorted.slice(TOP).reduce((s, r) => s + r.value, 0);
+  return [...sorted.slice(0, TOP), { name: `Other (${sorted.length - TOP})`, value: rest }];
+}
+
 // Popup sizing used to clamp the hover panel inside the chart wrapper.
-const POPUP_W = 340;
-const POPUP_H = 320;
+const POPUP_W = 320;
+const POPUP_H = 360;
 
 function SankeyNode({ x, y, width, height, payload, onNodeHover, onHoverEnd, onNodeClick, hasTxns }) {
   const kind = payload.kind || 'expense';
@@ -142,42 +163,38 @@ function HoverPopup({ hover }) {
   }
 
   const txns = hover.transactions || [];
-  const showCount = Math.min(txns.length, 40);
   const accent = NODE_COLORS[kind] || 'var(--c-text-primary)';
+  const total = txns.reduce((s, t) => s + Math.abs(t.amount), 0);
+  const slices = vendorSlices(txns);
 
   return (
     <div style={base}>
       {/* Header: category name + total */}
       <div className="px-3 py-2 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid var(--c-border)' }}>
         <span className="text-xs font-semibold truncate" style={{ color: 'var(--c-text-primary)' }}>{hover.name}</span>
-        <span className="text-xs font-mono font-semibold flex-shrink-0" style={{ color: accent }}>{fmt(hover.value)}</span>
+        <span className="text-xs font-mono font-semibold flex-shrink-0" style={{ color: accent }}>{fmt(hover.value || total)}</span>
       </div>
 
       {txns.length === 0 ? (
         <div className="px-3 py-3 text-xs" style={{ color: 'var(--c-muted)' }}>
           No itemized transactions for this period.
         </div>
+      ) : slices.length < 2 ? (
+        // A single vendor makes a pie meaningless -- show a compact summary instead.
+        <div className="px-3 py-3 flex items-center justify-between gap-2 text-xs">
+          <span className="truncate" style={{ color: 'var(--c-text-primary)' }}>{slices[0]?.name || '—'}</span>
+          <span className="font-mono flex-shrink-0" style={{ color: 'var(--c-muted)' }}>
+            {txns.length} txn{txns.length === 1 ? '' : 's'}
+          </span>
+        </div>
       ) : (
-        <>
-          <div style={{ maxHeight: POPUP_H - 90, overflow: 'hidden' }}>
-            {txns.slice(0, showCount).map((t, i) => (
-              <div
-                key={i}
-                className="px-3 py-1.5 flex items-center gap-2 text-xs"
-                style={{ borderTop: i === 0 ? 'none' : '1px solid var(--c-subtle-5)' }}
-              >
-                <span className="font-mono flex-shrink-0" style={{ color: 'var(--c-muted)', width: 62 }}>{t.date?.slice(5)}</span>
-                <span className="truncate flex-1" style={{ color: 'var(--c-text-primary)' }}>
-                  {t.counterparty || t.description || '—'}
-                </span>
-                <span className="font-mono flex-shrink-0" style={{ color: 'var(--c-text-primary)' }}>{fmtCents(Math.abs(t.amount))}</span>
-              </div>
-            ))}
-          </div>
-          <div className="px-3 py-1.5 text-[11px]" style={{ borderTop: '1px solid var(--c-border)', color: 'var(--c-muted)' }}>
-            {txns.length > showCount ? `Showing ${showCount} of ${txns.length} transactions` : `${txns.length} transaction${txns.length === 1 ? '' : 's'}`}
-          </div>
-        </>
+        <CategoryPie txns={txns} total={total} accent={accent} stacked />
+      )}
+
+      {txns.length > 0 && (
+        <div className="px-3 py-1.5 text-[11px]" style={{ borderTop: '1px solid var(--c-border)', color: 'var(--c-muted)' }}>
+          Click to open the full transaction list
+        </div>
       )}
     </div>
   );
@@ -214,34 +231,23 @@ function Segmented({ label, options, value, onChange }) {
   );
 }
 
-// Slice palette for the category breakdown pie -- purple-led to match the brand,
-// with warm/cool alternates so adjacent slices stay distinct.
-const PIE_COLORS = ['#5c3ff4', '#d98a3d', '#22c55e', '#8b7cf6', '#e0a458', '#4ade80', '#a78bfa', '#f0b968', '#6b7280'];
-
-// Animated donut summarizing a category's spend by vendor. Sits at the top of the
-// transaction list so the composition reads at a glance before the line items.
-function CategoryPie({ txns, total, accent }) {
-  const slices = useMemo(() => {
-    const map = {};
-    for (const t of txns) {
-      const key = t.counterparty || t.description || 'Uncategorized';
-      map[key] = (map[key] || 0) + Math.abs(t.amount);
-    }
-    const sorted = Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-    const TOP = 7;
-    if (sorted.length <= TOP + 1) return sorted;
-    const rest = sorted.slice(TOP).reduce((s, r) => s + r.value, 0);
-    return [...sorted.slice(0, TOP), { name: `Other (${sorted.length - TOP})`, value: rest }];
-  }, [txns]);
+// Animated donut summarizing a category's spend by vendor. Used both in the
+// hover popup (stacked: pie above a single-column legend) and atop the detail
+// modal's transaction list (row: pie beside a two-column legend).
+function CategoryPie({ txns, total, accent, stacked = false }) {
+  const slices = useMemo(() => vendorSlices(txns), [txns]);
 
   // A single-vendor pie carries no information -- skip it.
   if (slices.length < 2) return null;
 
+  const size = stacked ? 128 : 150;
+
   return (
-    <div className="px-4 py-3 flex items-center gap-4 flex-wrap" style={{ borderBottom: '1px solid var(--c-border)' }}>
-      <div style={{ width: 150, height: 150, flexShrink: 0, position: 'relative' }}>
+    <div
+      className={stacked ? 'px-3 py-3 flex flex-col items-center gap-3' : 'px-4 py-3 flex items-center gap-4 flex-wrap'}
+      style={{ borderBottom: stacked ? 'none' : '1px solid var(--c-border)' }}
+    >
+      <div style={{ width: size, height: size, flexShrink: 0, position: 'relative' }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -250,8 +256,8 @@ function CategoryPie({ txns, total, accent }) {
               nameKey="name"
               cx="50%"
               cy="50%"
-              innerRadius={40}
-              outerRadius={72}
+              innerRadius={stacked ? 35 : 40}
+              outerRadius={stacked ? 61 : 72}
               paddingAngle={1.5}
               stroke="none"
               isAnimationActive
@@ -273,7 +279,13 @@ function CategoryPie({ txns, total, accent }) {
           <span className="text-xs font-mono font-semibold" style={{ color: accent }}>{fmt(total)}</span>
         </div>
       </div>
-      <div className="flex-1 min-w-[200px] grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+      <div
+        className={
+          stacked
+            ? 'w-full grid grid-cols-1 gap-y-1'
+            : 'flex-1 min-w-[200px] grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1'
+        }
+      >
         {slices.map((s, i) => (
           <div key={i} className="flex items-center gap-2 text-xs min-w-0">
             <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
