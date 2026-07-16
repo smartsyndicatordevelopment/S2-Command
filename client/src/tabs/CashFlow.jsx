@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { ResponsiveContainer, Sankey, Layer, Rectangle } from 'recharts';
+import { ResponsiveContainer, Sankey, Layer, Rectangle, PieChart, Pie, Cell } from 'recharts';
 import { useApi } from '../hooks/useApi';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -214,6 +214,80 @@ function Segmented({ label, options, value, onChange }) {
   );
 }
 
+// Slice palette for the category breakdown pie -- purple-led to match the brand,
+// with warm/cool alternates so adjacent slices stay distinct.
+const PIE_COLORS = ['#5c3ff4', '#d98a3d', '#22c55e', '#8b7cf6', '#e0a458', '#4ade80', '#a78bfa', '#f0b968', '#6b7280'];
+
+// Animated donut summarizing a category's spend by vendor. Sits at the top of the
+// transaction list so the composition reads at a glance before the line items.
+function CategoryPie({ txns, total, accent }) {
+  const slices = useMemo(() => {
+    const map = {};
+    for (const t of txns) {
+      const key = t.counterparty || t.description || 'Uncategorized';
+      map[key] = (map[key] || 0) + Math.abs(t.amount);
+    }
+    const sorted = Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+    const TOP = 7;
+    if (sorted.length <= TOP + 1) return sorted;
+    const rest = sorted.slice(TOP).reduce((s, r) => s + r.value, 0);
+    return [...sorted.slice(0, TOP), { name: `Other (${sorted.length - TOP})`, value: rest }];
+  }, [txns]);
+
+  // A single-vendor pie carries no information -- skip it.
+  if (slices.length < 2) return null;
+
+  return (
+    <div className="px-4 py-3 flex items-center gap-4 flex-wrap" style={{ borderBottom: '1px solid var(--c-border)' }}>
+      <div style={{ width: 150, height: 150, flexShrink: 0, position: 'relative' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={slices}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={40}
+              outerRadius={72}
+              paddingAngle={1.5}
+              stroke="none"
+              isAnimationActive
+              animationBegin={0}
+              animationDuration={800}
+              animationEasing="ease-out"
+            >
+              {slices.map((s, i) => (
+                <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center"
+          style={{ pointerEvents: 'none' }}
+        >
+          <span className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--c-muted)' }}>Total</span>
+          <span className="text-xs font-mono font-semibold" style={{ color: accent }}>{fmt(total)}</span>
+        </div>
+      </div>
+      <div className="flex-1 min-w-[200px] grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+        {slices.map((s, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs min-w-0">
+            <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+            <span className="truncate flex-1" style={{ color: 'var(--c-text-primary)' }}>{s.name}</span>
+            <span className="font-mono flex-shrink-0" style={{ color: 'var(--c-muted)' }}>
+              {total ? Math.round((s.value / total) * 100) : 0}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Click-to-open detail: a scrollable, sortable, groupable table of every
 // transaction behind a category (or an aggregated group node).
 function TransactionModal({ detail, onClose }) {
@@ -334,6 +408,9 @@ function TransactionModal({ detail, onClose }) {
             options={[{ value: 'none', label: 'None' }, { value: 'vendor', label: 'Vendor' }, { value: 'month', label: 'Month' }]}
           />
         </div>
+
+        {/* Animated spend-by-vendor breakdown, atop the transaction list */}
+        {txns.length > 0 && <CategoryPie txns={txns} total={total} accent={accent} />}
 
         {/* Body */}
         <div className="overflow-y-auto" style={{ flex: 1 }}>

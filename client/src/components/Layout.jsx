@@ -177,9 +177,26 @@ function Clock() {
   );
 }
 
+const TAB_STORAGE_KEY = 's2:activeTab';
+
+// Persist the active tab so a page refresh reloads the view we're on rather than
+// snapping back to the Overview agent.
+function readInitialTab() {
+  try {
+    const saved = localStorage.getItem(TAB_STORAGE_KEY);
+    if (saved && TAB_COMPONENTS[saved]) return saved;
+  } catch { /* localStorage unavailable -- fall through */ }
+  return 'overview';
+}
+
 export default function Layout({ onLogout }) {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(readInitialTab);
   const { theme, toggleTheme, isDemo, toggleDemo } = useApp();
+
+  // Remember the current tab across refreshes.
+  useEffect(() => {
+    try { localStorage.setItem(TAB_STORAGE_KEY, activeTab); } catch { /* ignore */ }
+  }, [activeTab]);
 
   const handleLogout = async () => {
     // Clear the legacy session (transition) and the better-auth session.
