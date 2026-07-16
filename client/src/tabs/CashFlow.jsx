@@ -215,7 +215,26 @@ export default function CashFlow() {
     return idx;
   }, [txnIndex]);
   const txnsFor = (name) => normalizedTxns()[String(name || '').trim().toLowerCase()] || [];
-  const hasTxns = (name, kind) => DRILLDOWN_KINDS.has(kind) && txnsFor(name).length > 0;
+
+  // Group nodes (e.g. "Operating Expenses") have no transactions of their own --
+  // aggregate every leaf category that flows out of them, derived from the links.
+  const childrenByGroup = {};
+  for (const l of links) {
+    const s = nodes[l.source], t = nodes[l.target];
+    if (s?.kind === 'group' && DRILLDOWN_KINDS.has(t?.kind)) {
+      (childrenByGroup[s.name] = childrenByGroup[s.name] || []).push(t.name);
+    }
+  }
+  const groupTxns = (name) => {
+    const all = (childrenByGroup[name] || []).flatMap(txnsFor);
+    all.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    return all;
+  };
+
+  // Line items for any node, whichever kind it is.
+  const txnsForNode = (name, kind) =>
+    DRILLDOWN_KINDS.has(kind) ? txnsFor(name) : kind === 'group' ? groupTxns(name) : [];
+  const hasTxns = (name, kind) => txnsForNode(name, kind).length > 0;
 
   // Clamp a popup's top-left so it stays inside the chart wrapper.
   const clamp = (cx, cy) => {
@@ -232,22 +251,43 @@ export default function CashFlow() {
 
   const onNodeHover = (payload, e) => {
     const kind = payload.kind || 'expense';
-    const drill = DRILLDOWN_KINDS.has(kind);
     setHover({
       type: 'node',
       kind,
       name: payload.name,
       value: payload.value || 0,
-      transactions: drill ? txnsFor(payload.name) : [],
+      transactions: txnsForNode(payload.name, kind),
       ...clamp(e.clientX, e.clientY),
     });
   };
 
   const onLinkHover = (payload, e) => {
+    // A flow band is the easiest thing to hover, so make it drill in too: show the
+    // line items for whichever endpoint is a spendable category (target first --
+    // the expense side; then source -- the income side). Otherwise show the flow.
+    const target = payload?.target, source = payload?.source;
+    const cat =
+      (target && hasTxns(target.name, target.kind) && { node: target }) ||
+      (source && hasTxns(source.name, source.kind) && { node: source }) ||
+      null;
+
+    if (cat) {
+      const { name, kind } = cat.node;
+      setHover({
+        type: 'node',
+        kind,
+        name,
+        value: payload?.value || 0,
+        transactions: txnsForNode(name, kind),
+        ...clamp(e.clientX, e.clientY),
+      });
+      return;
+    }
+
     setHover({
       type: 'link',
-      source: payload?.source?.name || '',
-      target: payload?.target?.name || '',
+      source: source?.name || '',
+      target: target?.name || '',
       value: payload?.value || 0,
       ...clamp(e.clientX, e.clientY),
     });
@@ -330,7 +370,7 @@ export default function CashFlow() {
       {!loading && hasData && (
         <div className="rounded-lg border p-4" style={{ borderColor: 'var(--c-border)', backgroundColor: 'var(--c-card)' }}>
           <p className="text-[11px] mb-2" style={{ color: 'var(--c-muted)' }}>
-            Hover a category to see its transactions.
+            Hover a category or its flow to see the underlying transactions.
           </p>
           <div ref={wrapRef} className="relative">
             <ResponsiveContainer width="100%" height={chartHeight}>

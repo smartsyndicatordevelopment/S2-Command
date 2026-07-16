@@ -257,7 +257,6 @@ async function digitsQueryEntries(filters, maxPages = 6) {
 
 const EXPENSE_CATEGORY_TYPES = ['Expenses', 'CostOfGoodsSold', 'OtherExpenses'];
 const INCOME_CATEGORY_TYPES  = ['Income', 'OtherIncome'];
-const PNL_CATEGORY_TYPES     = [...INCOME_CATEGORY_TYPES, ...EXPENSE_CATEGORY_TYPES];
 const SOFTWARE_RE  = /software|saas|subscription|\bapps?\b|cloud|platform|\btool/i;
 const MARKETING_RE = /advertis|marketing|promo|social media|ad spend|\bads\b/i;
 
@@ -455,27 +454,39 @@ const round2 = (n) => Math.round(n * 100) / 100;
 const TXNS_PER_CATEGORY_CAP = 200;
 
 async function txnsByCategory({ startDate, endDate }) {
-  const details = await digitsQueryEntries({
-    occurredAfter:  new Date(startDate).toISOString(),
-    occurredBefore: new Date(`${endDate}T23:59:59`).toISOString(),
-    categoryTypes:  PNL_CATEGORY_TYPES,
-  });
-
+  const occurredAfter  = new Date(startDate).toISOString();
+  const occurredBefore = new Date(`${endDate}T23:59:59`).toISOString();
   const byCat = {};
-  for (const ed of details) {
-    const e = ed.entry || {};
-    const cat = e.category?.name;
-    if (!cat) continue;
-    const amount = typeof e.amount?.amount === 'number' ? e.amount.amount / 100 : 0;
-    if (!amount) continue;
-    const date = (ed.date || '').split('T')[0];
-    if (!date) continue;
-    (byCat[cat] = byCat[cat] || []).push({
-      date,
-      description:  e.description || null,
-      counterparty: e.counterparty?.name || null,
-      amount:       round2(amount), // signed: negative = money out
-    });
+
+  const ingest = (details) => {
+    for (const ed of details) {
+      const e = ed.entry || {};
+      const cat = e.category?.name;
+      if (!cat) continue;
+      const amount = typeof e.amount?.amount === 'number' ? e.amount.amount / 100 : 0;
+      if (!amount) continue;
+      const date = (ed.date || '').split('T')[0];
+      if (!date) continue;
+      (byCat[cat] = byCat[cat] || []).push({
+        date,
+        description:  e.description || null,
+        counterparty: e.counterparty?.name || null,
+        amount:       round2(amount), // signed: negative = money out
+      });
+    }
+  };
+
+  // Query expenses (known-good category types) and income independently so a
+  // rejected income enum can never wipe out the expense breakout.
+  try {
+    ingest(await digitsQueryEntries({ occurredAfter, occurredBefore, categoryTypes: EXPENSE_CATEGORY_TYPES }));
+  } catch (err) {
+    console.error('txnsByCategory expense query error:', err.message);
+  }
+  try {
+    ingest(await digitsQueryEntries({ occurredAfter, occurredBefore, categoryTypes: INCOME_CATEGORY_TYPES }));
+  } catch (err) {
+    console.error('txnsByCategory income query error:', err.message);
   }
 
   for (const cat of Object.keys(byCat)) {
