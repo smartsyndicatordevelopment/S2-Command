@@ -81,6 +81,15 @@ export default function RecategorizeIncome() {
             className="text-sm px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--c-subtle-5)', border: '1px solid var(--c-border)', color: 'var(--c-text-primary)', outline: 'none' }}>
             {YEARS.map(y => <option key={y} value={y} style={OPTION_STYLE}>{y}</option>)}
           </select>
+          <button onClick={loadPreview} disabled={loading} title="Re-check for income that needs re-categorizing"
+            className="text-sm px-3 py-2 rounded-lg font-medium flex items-center gap-1.5"
+            style={{ backgroundColor: 'var(--c-subtle-5)', border: '1px solid var(--c-border)', color: 'var(--c-text-primary)', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              className={loading ? 'animate-spin' : ''}>
+              <path d="M21 12a9 9 0 1 1-2.64-6.36" /><polyline points="21 3 21 9 15 9" />
+            </svg>
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
         </div>
       </div>
 
