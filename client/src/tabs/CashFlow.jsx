@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { ResponsiveContainer, Sankey, Layer, Rectangle } from 'recharts';
 import { useApi } from '../hooks/useApi';
 
@@ -43,7 +43,7 @@ const fmtCents = (n) =>
 const POPUP_W = 340;
 const POPUP_H = 320;
 
-function SankeyNode({ x, y, width, height, payload, onNodeHover, onHoverEnd, hasTxns }) {
+function SankeyNode({ x, y, width, height, payload, onNodeHover, onHoverEnd, onNodeClick, hasTxns }) {
   const kind = payload.kind || 'expense';
   const color = NODE_COLORS[kind] || '#9aa0a6';
   const value = payload.value || 0;
@@ -52,6 +52,7 @@ function SankeyNode({ x, y, width, height, payload, onNodeHover, onHoverEnd, has
 
   const enter = (e) => onNodeHover(payload, e);
   const leave = () => onHoverEnd();
+  const click = drillable ? () => onNodeClick(payload) : undefined;
 
   // Profit pass-through: a bare green bar, no label (the labeled "Net Profit"
   // node sits one column to its right).
@@ -64,6 +65,7 @@ function SankeyNode({ x, y, width, height, payload, onNodeHover, onHoverEnd, has
       <g
         onMouseEnter={enter}
         onMouseLeave={leave}
+        onClick={click}
         style={{ cursor: drillable ? 'pointer' : 'default' }}
       >
         <Rectangle x={x} y={y} width={width} height={height} fill={color} fillOpacity={0.9} radius={2} />
@@ -88,7 +90,7 @@ function SankeyNode({ x, y, width, height, payload, onNodeHover, onHoverEnd, has
   );
 }
 
-function SankeyLink({ sourceX, sourceY, sourceControlX, targetControlX, targetX, targetY, linkWidth, payload, onLinkHover, onHoverEnd }) {
+function SankeyLink({ sourceX, sourceY, sourceControlX, targetControlX, targetX, targetY, linkWidth, payload, onLinkHover, onHoverEnd, onLinkClick }) {
   const color = LINK_COLORS[payload?.target?.kind] || '#9aa0a6';
   const enter = (e) => onLinkHover(payload, e);
   return (
@@ -101,6 +103,7 @@ function SankeyLink({ sourceX, sourceY, sourceControlX, targetControlX, targetX,
       style={{ cursor: 'pointer' }}
       onMouseEnter={enter}
       onMouseLeave={onHoverEnd}
+      onClick={() => onLinkClick(payload)}
     />
   );
 }
@@ -180,6 +183,186 @@ function HoverPopup({ hover }) {
   );
 }
 
+const monthLabel = (ym) => {
+  const [y, mo] = (ym || '').split('-');
+  const i = Number(mo) - 1;
+  return i >= 0 && i < 12 ? `${MONTHS[i].slice(0, 3)} ${y}` : ym;
+};
+
+// Segmented button group for the sort/group controls.
+function Segmented({ label, options, value, onChange }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] uppercase tracking-widest" style={{ color: 'var(--c-muted)' }}>{label}</span>
+      <div className="flex rounded overflow-hidden" style={{ border: '1px solid var(--c-border)' }}>
+        {options.map((o, i) => (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            className="text-xs px-2.5 py-1 transition-colors"
+            style={{
+              backgroundColor: value === o.value ? 'rgba(92,63,244,0.15)' : 'transparent',
+              color: value === o.value ? '#5c3ff4' : 'var(--c-muted)',
+              borderLeft: i === 0 ? 'none' : '1px solid var(--c-border)',
+            }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Click-to-open detail: a scrollable, sortable, groupable table of every
+// transaction behind a category (or an aggregated group node).
+function TransactionModal({ detail, onClose }) {
+  const [sortKey, setSortKey] = useState('amount'); // 'date' | 'amount' | 'name'
+  const [sortDir, setSortDir] = useState('desc');   // 'asc' | 'desc'
+  const [groupBy, setGroupBy] = useState('none');   // 'none' | 'vendor' | 'month'
+
+  // Reset controls whenever a different category is opened.
+  useEffect(() => { setSortKey('amount'); setSortDir('desc'); setGroupBy('none'); }, [detail?.name]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const txns = detail?.transactions || [];
+
+  const sortRows = useCallback((rows) => {
+    const mul = sortDir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      if (sortKey === 'amount') return (Math.abs(a.amount) - Math.abs(b.amount)) * mul;
+      if (sortKey === 'name') {
+        const an = (a.counterparty || a.description || '').toLowerCase();
+        const bn = (b.counterparty || b.description || '').toLowerCase();
+        return (an < bn ? -1 : an > bn ? 1 : 0) * mul;
+      }
+      return (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) * mul;
+    });
+  }, [sortKey, sortDir]);
+
+  const groups = useMemo(() => {
+    if (groupBy === 'none') return null;
+    const map = {};
+    for (const t of txns) {
+      const key = groupBy === 'vendor' ? (t.counterparty || t.description || 'Uncategorized') : t.date.slice(0, 7);
+      (map[key] = map[key] || []).push(t);
+    }
+    return Object.entries(map)
+      .map(([name, rows]) => ({
+        name: groupBy === 'month' ? monthLabel(name) : name,
+        rows: sortRows(rows),
+        total: rows.reduce((s, r) => s + Math.abs(r.amount), 0),
+        count: rows.length,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [txns, groupBy, sortRows]);
+
+  const flatRows = useMemo(() => (groupBy === 'none' ? sortRows(txns) : []), [txns, groupBy, sortRows]);
+
+  if (!detail) return null;
+
+  const total = txns.reduce((s, t) => s + Math.abs(t.amount), 0);
+  const accent = NODE_COLORS[detail.kind] || 'var(--c-text-primary)';
+
+  const Row = ({ t }) => (
+    <div className="px-4 py-2 flex items-center gap-3 text-xs" style={{ borderTop: '1px solid var(--c-subtle-5)' }}>
+      <span className="font-mono flex-shrink-0" style={{ color: 'var(--c-muted)', width: 84 }}>{t.date}</span>
+      <span className="truncate flex-1" style={{ color: 'var(--c-text-primary)' }}>{t.counterparty || t.description || '—'}</span>
+      {t.counterparty && t.description && t.description !== t.counterparty && (
+        <span className="truncate hidden sm:block" style={{ color: 'var(--c-muted)', maxWidth: 200 }}>{t.description}</span>
+      )}
+      <span className="font-mono flex-shrink-0 text-right" style={{ color: 'var(--c-text-primary)', width: 96 }}>{fmtCents(Math.abs(t.amount))}</span>
+    </div>
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl rounded-xl flex flex-col"
+        style={{ backgroundColor: 'var(--c-card)', border: '1px solid var(--c-border)', maxHeight: '85vh', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-4 py-3 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid var(--c-border)' }}>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: accent }} />
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--c-text-primary)' }}>{detail.name}</h2>
+            </div>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--c-muted)' }}>
+              {txns.length} transaction{txns.length === 1 ? '' : 's'} · {fmtCents(total)}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-xs px-2 py-1 rounded"
+            style={{ border: '1px solid var(--c-border)', color: 'var(--c-muted)' }}
+          >
+            Close
+          </button>
+        </div>
+
+        {/* Controls */}
+        <div className="px-4 py-2.5 flex items-center gap-5 flex-wrap" style={{ borderBottom: '1px solid var(--c-border)' }}>
+          <Segmented
+            label="Sort"
+            value={sortKey}
+            onChange={setSortKey}
+            options={[{ value: 'amount', label: 'Amount' }, { value: 'date', label: 'Date' }, { value: 'name', label: 'Name' }]}
+          />
+          <button
+            onClick={() => setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))}
+            className="text-xs px-2 py-1 rounded"
+            style={{ border: '1px solid var(--c-border)', color: 'var(--c-muted)' }}
+            title="Toggle sort direction"
+          >
+            {sortDir === 'asc' ? '↑ Asc' : '↓ Desc'}
+          </button>
+          <Segmented
+            label="Group"
+            value={groupBy}
+            onChange={setGroupBy}
+            options={[{ value: 'none', label: 'None' }, { value: 'vendor', label: 'Vendor' }, { value: 'month', label: 'Month' }]}
+          />
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto" style={{ flex: 1 }}>
+          {txns.length === 0 ? (
+            <p className="px-4 py-6 text-xs" style={{ color: 'var(--c-muted)' }}>No itemized transactions for this period.</p>
+          ) : groupBy === 'none' ? (
+            flatRows.map((t, i) => <Row key={i} t={t} />)
+          ) : (
+            groups.map((g) => (
+              <div key={g.name}>
+                <div
+                  className="px-4 py-2 flex items-center justify-between sticky top-0"
+                  style={{ backgroundColor: 'var(--c-subtle-5)', borderTop: '1px solid var(--c-border)', borderBottom: '1px solid var(--c-border)' }}
+                >
+                  <span className="text-xs font-semibold" style={{ color: 'var(--c-text-primary)' }}>
+                    {g.name} <span style={{ color: 'var(--c-muted)' }}>· {g.count}</span>
+                  </span>
+                  <span className="text-xs font-mono font-semibold" style={{ color: accent }}>{fmtCents(g.total)}</span>
+                </div>
+                {g.rows.map((t, i) => <Row key={i} t={t} />)}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Stat({ label, value, color }) {
   return (
     <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--c-border)', backgroundColor: 'var(--c-card)' }}>
@@ -193,6 +376,7 @@ export default function CashFlow() {
   const [year, setYear] = useState(PREV_MONTH_YEAR);
   const [month, setMonth] = useState(PREV_MONTH); // 0 = Full Year, 1-12 = month
   const [hover, setHover] = useState(null);
+  const [detail, setDetail] = useState(null);
   const wrapRef = useRef(null);
 
   // The current year only has months up to this month; clamp so we never request a future month.
@@ -295,6 +479,23 @@ export default function CashFlow() {
 
   const onHoverEnd = () => setHover(null);
 
+  // Click opens the full, scrollable/sortable/groupable transaction table.
+  const openDetail = (name, kind, value) => {
+    const transactions = txnsForNode(name, kind);
+    if (!transactions.length) return;
+    setHover(null);
+    setDetail({ name, kind, value: value || 0, transactions });
+  };
+  const onNodeClick = (payload) => openDetail(payload.name, payload.kind || 'expense', payload.value);
+  const onLinkClick = (payload) => {
+    const target = payload?.target, source = payload?.source;
+    const node =
+      (target && hasTxns(target.name, target.kind) && target) ||
+      (source && hasTxns(source.name, source.kind) && source) ||
+      null;
+    if (node) openDetail(node.name, node.kind, payload?.value);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -370,14 +571,14 @@ export default function CashFlow() {
       {!loading && hasData && (
         <div className="rounded-lg border p-4" style={{ borderColor: 'var(--c-border)', backgroundColor: 'var(--c-card)' }}>
           <p className="text-[11px] mb-2" style={{ color: 'var(--c-muted)' }}>
-            Hover a category or its flow to see the underlying transactions.
+            Hover a category to peek · click to open the full transaction list (sortable, groupable).
           </p>
           <div ref={wrapRef} className="relative">
             <ResponsiveContainer width="100%" height={chartHeight}>
               <Sankey
                 data={{ nodes, links }}
-                node={<SankeyNode onNodeHover={onNodeHover} onHoverEnd={onHoverEnd} hasTxns={hasTxns} />}
-                link={<SankeyLink onLinkHover={onLinkHover} onHoverEnd={onHoverEnd} />}
+                node={<SankeyNode onNodeHover={onNodeHover} onHoverEnd={onHoverEnd} onNodeClick={onNodeClick} hasTxns={hasTxns} />}
+                link={<SankeyLink onLinkHover={onLinkHover} onHoverEnd={onHoverEnd} onLinkClick={onLinkClick} />}
                 nodePadding={24}
                 nodeWidth={12}
                 linkCurvature={0.5}
@@ -389,6 +590,8 @@ export default function CashFlow() {
           </div>
         </div>
       )}
+
+      <TransactionModal detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }

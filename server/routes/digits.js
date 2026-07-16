@@ -451,7 +451,7 @@ const round2 = (n) => Math.round(n * 100) / 100;
 // so the frontend can show a per-category transaction list on hover. Keyed by the
 // exact category name (the Sankey leaf node's name); each list is sorted newest
 // first and capped so a single popup payload stays small.
-const TXNS_PER_CATEGORY_CAP = 200;
+const TXNS_PER_CATEGORY_CAP = 1000;
 
 async function txnsByCategory({ startDate, endDate }) {
   const occurredAfter  = new Date(startDate).toISOString();
