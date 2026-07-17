@@ -28,6 +28,31 @@ Do not branch first for this project — push straight to `main`.
 - Start: `npm start`; health check at `/health`.
 - Prod-only DB scripts run via `railway run node server/scripts/<script>.js`.
 
+## Digits integration -- what the app can and cannot write
+
+The app connects to Digits via OAuth with scope `ledger:read source:sync`
+([server/routes/digitsOAuth.js](server/routes/digitsOAuth.js)). Know the limits before
+promising a write:
+
+- **`ledger:read`** -- read P&L, transactions, categories, parties. All the reporting
+  (Cash Flow, Software Subscriptions, Overview analyst) rides on this.
+- **`source:sync`** -- write/upsert transactions into a data source **the app owns**
+  (the "S2 Command Income Adjustments" source, `ensureS2Source` in
+  [server/routes/digits.js](server/routes/digits.js)). It is **NOT** a ledger-write
+  scope. It **cannot** edit or recategorize a transaction that belongs to another source
+  (e.g. a bank/credit-card feed like Chase Card 8119). There is no in-place edit of
+  existing ledger entries.
+- **The claude.ai "Digits" MCP connector is read-only** -- query/list/statement tools
+  only, no update tool. Do not tell the user it can recategorize; it cannot.
+
+Consequence: to "recategorize" you either (a) edit in the Digits UI (the only real fix
+for bank-fed transactions like Google Fi -> Internet & Phone), or (b) use the
+replace-and-delete workaround the income feature uses -- write corrected replacements
+into our source, then the user bulk-deletes the native originals
+([server/routes/digitsRecat.js](server/routes/digitsRecat.js)). (b) is built for Stripe
+income only (income labels + Stripe clearing/fees, no expense labels) and must NOT be
+used on bank-fed card charges -- recreating + deleting them breaks card reconciliation.
+
 ## Notes
 
 - Brand for this app is purple `#5c3ff4` + Inter (overrides the workspace sage kit).
