@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useApp } from '../context/AppContext';
+import { getDemoResponse } from '../data/demoData';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_MONTH = new Date().getMonth() + 1;
@@ -20,6 +22,7 @@ const OPTION_STYLE = { backgroundColor: 'var(--c-card)', color: 'var(--c-text-pr
 const usd = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
 
 export default function RecategorizeIncome() {
+  const { isDemo } = useApp();
   const [year, setYear] = useState(PREV_YEAR);
   const [month, setMonth] = useState(PREV_MONTH);
   const [preview, setPreview] = useState(null);
@@ -31,6 +34,11 @@ export default function RecategorizeIncome() {
 
   const loadPreview = useCallback(async () => {
     setLoading(true); setError(null); setResult(null); setOverrides({});
+    if (isDemo) {
+      setPreview(getDemoResponse('/api/digits/recat/preview'));
+      setLoading(false);
+      return;
+    }
     try {
       const r = await fetch(`/api/digits/recat/preview?year=${year}&month=${month}`, { credentials: 'include' });
       const d = await r.json();
@@ -38,7 +46,7 @@ export default function RecategorizeIncome() {
       setPreview(d);
     } catch (e) { setError(e.message); setPreview(null); }
     setLoading(false);
-  }, [year, month]);
+  }, [year, month, isDemo]);
 
   useEffect(() => { loadPreview(); }, [loadPreview]);
 
@@ -47,6 +55,14 @@ export default function RecategorizeIncome() {
   async function apply() {
     if (!preview?.previewId) return;
     setApplying(true); setError(null);
+    if (isDemo) {
+      // Demo mode: simulate the write without touching Digits.
+      setTimeout(() => {
+        setResult({ applied: recognized.length, skipped: preview.unrecognizedCount || 0 });
+        setApplying(false);
+      }, 600);
+      return;
+    }
     try {
       const r = await fetch('/api/digits/recat/apply', {
         method: 'POST', credentials: 'include',
