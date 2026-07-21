@@ -23,6 +23,11 @@ function fmtDate(ts) {
   return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function daysUntil(ts) {
+  const now = Math.floor(Date.now() / 1000);
+  return Math.ceil((ts - now) / (24 * 60 * 60));
+}
+
 function useSortable(defaultKey, defaultDir = 'asc') {
   const [sortKey, setSortKey] = useState(defaultKey);
   const [sortDir, setSortDir] = useState(defaultDir);
@@ -205,6 +210,7 @@ export default function Customers() {
     interval:         s => s.interval,
     created:          s => s.created,
     currentPeriodEnd: s => s.currentPeriodEnd,
+    daysUntil:        s => s.currentPeriodEnd,
     totalSpend:       s => s.totalSpend,
   });
 
@@ -423,6 +429,7 @@ export default function Customers() {
                   <SortTh label="Cycle"        colKey="interval"         {...subsSort} onSort={subsSort.toggle} />
                   <SortTh label="Started"      colKey="created"          {...subsSort} onSort={subsSort.toggle} />
                   <SortTh label="Next Payment" colKey="currentPeriodEnd" {...subsSort} onSort={subsSort.toggle} />
+                  <SortTh label="Days Left"    colKey="daysUntil"        {...subsSort} onSort={subsSort.toggle} />
                   <SortTh label="Total Spend"  colKey="totalSpend"       {...subsSort} onSort={subsSort.toggle} align="right" className="text-right" />
                 </tr>
               </thead>
@@ -450,6 +457,14 @@ export default function Customers() {
                     </td>
                     <td className="py-2.5 pr-4 text-muted text-xs">{fmtDate(sub.created)}</td>
                     <td className="py-2.5 pr-4 text-xs text-muted">{fmtDate(sub.currentPeriodEnd)}</td>
+                    <td className="py-2.5 pr-4">
+                      {(() => {
+                        const d = daysUntil(sub.currentPeriodEnd);
+                        return d >= 0
+                          ? <DaysChip days={d} />
+                          : <span className="text-xs text-muted">--</span>;
+                      })()}
+                    </td>
                     <td className="py-2.5 font-mono text-right text-dim">{fmt(sub.totalSpend)}</td>
                   </tr>
                 ))}
@@ -462,7 +477,7 @@ export default function Customers() {
                   <td className="pt-3 font-mono font-semibold text-right" style={{ color: '#5c3ff4' }}>
                     {fmtMrr(totalMrr)}
                   </td>
-                  <td colSpan={4} />
+                  <td colSpan={5} />
                 </tr>
               </tfoot>
             </table>
