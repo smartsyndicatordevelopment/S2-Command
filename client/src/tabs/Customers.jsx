@@ -125,6 +125,9 @@ export default function Customers() {
   const [ltvHover, setLtvHover]         = useState(false);
   const [cacHover, setCacHover]         = useState(false);
   const [signupWindow, setSignupWindow] = useState('12');
+  const [revenueMetric, setRevenueMetric] = useState('mrr');
+  const [revenueHover, setRevenueHover]    = useState(false);
+  const [remainingHover, setRemainingHover] = useState(false);
 
   const subs = useApi('/api/subscriptions');
   const mktg = useApi(`/api/marketing-spend?days=${cacWindow}`);
@@ -170,6 +173,29 @@ export default function Customers() {
 
   // MRR from active only -- paused excluded per user requirement
   const totalMrr = useMemo(() => active.reduce((sum, s) => sum + mrrOf(s), 0), [active]);
+
+  // Remaining funds this month -- billed amounts for active subs whose next
+  // payment lands between now and the end of the current calendar month
+  const remainingThisMonth = useMemo(() => {
+    const now      = new Date();
+    const nowTs    = Math.floor(now.getTime() / 1000);
+    const endTs    = Math.floor(new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).getTime() / 1000);
+    return active.reduce((sum, s) => {
+      if (!s.cancelAt && s.currentPeriodEnd >= nowTs && s.currentPeriodEnd <= endTs) {
+        return sum + s.actualAmount;
+      }
+      return sum;
+    }, 0);
+  }, [active]);
+
+  const remainingCount = useMemo(() => {
+    const now   = new Date();
+    const nowTs = Math.floor(now.getTime() / 1000);
+    const endTs = Math.floor(new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).getTime() / 1000);
+    return active.filter(s => !s.cancelAt && s.currentPeriodEnd >= nowTs && s.currentPeriodEnd <= endTs).length;
+  }, [active]);
+
+  const monthName = new Date().toLocaleDateString('en-US', { month: 'long' });
 
   // Signup bar chart data
   const signupChartData = useMemo(() => {
@@ -258,20 +284,48 @@ export default function Customers() {
 
       {/* Row 1 -- revenue metrics */}
       <div className="grid grid-cols-5 gap-4">
+        {/* MRR / ARR -- combined with a selector */}
+        <div className="bg-card border border-border rounded-lg p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-medium uppercase tracking-widest text-muted">Recurring Revenue</p>
+            <select
+              value={revenueMetric}
+              onChange={e => setRevenueMetric(e.target.value)}
+              className="text-xs bg-bg border border-border rounded px-1.5 py-0.5 text-muted focus:outline-none cursor-pointer hover:text-white transition-colors"
+            >
+              <option value="mrr">MRR</option>
+              <option value="arr">ARR</option>
+            </select>
+          </div>
+          <div
+            className="relative inline-block"
+            onMouseEnter={() => setRevenueHover(true)}
+            onMouseLeave={() => setRevenueHover(false)}
+          >
+            {subs.loading
+              ? <span className="inline-block w-7 h-7 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+              : <p className="font-mono text-3xl font-bold text-purple cursor-help">
+                  {fmtMrr(revenueMetric === 'arr' ? totalMrr * 12 : totalMrr)}
+                </p>}
+            {revenueHover && !subs.loading && (
+              <div className="absolute bottom-full left-0 mb-2 z-50 min-w-max max-w-xs bg-card border border-border rounded-lg px-3 py-2 text-xs text-muted shadow-lg whitespace-pre-line pointer-events-none">
+                {revenueMetric === 'arr'
+                  ? `What the business would earn in a full year if MRR stayed flat.\nMRR (${fmtMrr(totalMrr)}) × 12`
+                  : `Total recurring revenue expected every month from all active subscriptions.\nSum of all active sub amounts; annual plans divided by 12\n${active.length} active subscriptions`}
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-muted mt-2">
+            {subs.loading ? ' ' : revenueMetric === 'arr' ? 'Annualized' : `${active.length} active subscriptions`}
+          </p>
+        </div>
+
         <StatCard
-          label="MRR"
-          value={fmtMrr(totalMrr)}
-          sub={`${active.length} active subscriptions`}
-          accent="purple"
-          tooltip={`Total recurring revenue expected every month from all active subscriptions.\nSum of all active sub amounts; annual plans divided by 12\n${active.length} active subscriptions`}
-          loading={subs.loading}
-        />
-        <StatCard
-          label="ARR"
-          value={fmtMrr(totalMrr * 12)}
-          sub="Annualized"
-          accent="purple"
-          tooltip={`What the business would earn in a full year if MRR stayed flat.\nMRR (${fmtMrr(totalMrr)}) × 12`}
+          label={`${monthName} Remaining`}
+          value={fmt(remainingThisMonth)}
+          sub={`${remainingCount} payment${remainingCount !== 1 ? 's' : ''} due before month end`}
+          accent="green"
+          tooltip={`How much is still expected to be collected before the end of ${monthName}.\nSum of billed amounts for active subscriptions whose next payment falls between today and the last day of the month.\n${remainingCount} payment${remainingCount !== 1 ? 's' : ''} due`}
           loading={subs.loading}
         />
 
