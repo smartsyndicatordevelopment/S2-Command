@@ -214,9 +214,7 @@ export default function Layout({ onLogout }) {
         style={{ height: '52px' }}
       >
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-7 h-7 rounded bg-purple-muted">
-            <span className="text-purple text-xs font-bold">S2</span>
-          </div>
+          <img src="/logo.png" alt="S2 Command logo" className="w-7 h-7 rounded object-cover" />
           <span className="text-white font-semibold text-sm">Command Center</span>
         </div>
 

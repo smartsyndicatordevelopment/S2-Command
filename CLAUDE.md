@@ -53,6 +53,13 @@ into our source, then the user bulk-deletes the native originals
 income only (income labels + Stripe clearing/fees, no expense labels) and must NOT be
 used on bank-fed card charges -- recreating + deleting them breaks card reconciliation.
 
+## Graphics, Icons, Logos & Video Generation
+
+For any request to generate icons, logos, graphics, or video clips, use `fal-bridge`
+(see the root `Brandon's Apps\CLAUDE.md` -> "Shared External API Resources" for the
+service URL, auth, and endpoints) rather than integrating a new image/video generation
+API or service directly into this project.
+
 ## Notes
 
 - Brand for this app is purple `#5c3ff4` + Inter (overrides the workspace sage kit).

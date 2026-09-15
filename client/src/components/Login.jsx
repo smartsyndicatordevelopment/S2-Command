@@ -60,9 +60,7 @@ export default function Login({ onLogin }) {
     <div className="flex items-center justify-center h-screen bg-bg">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-purple-muted mb-4">
-            <span className="text-purple text-xl font-bold">S2</span>
-          </div>
+          <img src="/logo.png" alt="S2 Command logo" className="inline-block w-12 h-12 rounded-lg object-cover mb-4" />
           <h1 className="text-xl font-semibold text-white">Command Center</h1>
           <p className="text-muted text-sm mt-1">Smart Syndicator</p>
         </div>
