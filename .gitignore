@@ -9,3 +9,4 @@ sessions/
 .gstack/
 .dev.vars
 .wrangler/
+dump/
