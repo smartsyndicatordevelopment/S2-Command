@@ -187,3 +187,11 @@ private key to `railway-dump.mjs`, then `node scripts/railway-dump.mjs --exclude
 - Browser lesson: the shared control browser keeps other sessions' tabs open; reusing tab 0 replaced a Railway dashboard tab (restored
   afterwards). In this Playwright-based browser, clicks wait for the tab to be in front (`browser_tabs select`), and the click tool takes
   the element as `target`.
+
+## Final cleanup (2026-10-23)
+
+- Deleted the staging DNS record `command-staging.smartsyndicator.com` (it still pointed at the deleted Railway host, a dangling
+  record) and Railway's `_railway-verify.command.smartsyndicator.com` TXT record, in the Cloudflare dashboard.
+- Removed the Worker route `command-staging.smartsyndicator.com/*` (dashboard) and from `wrangler.jsonc`, so a future deploy does not
+  recreate it. The real route `command.smartsyndicator.com/*` is untouched.
+- The migration worktree `S2 Command-wt-cloudflare` and branch `cloudflare-migration` were removed after merging into `dev` and `main`.
