@@ -43,8 +43,17 @@ sync job (so two hosts never sync at once).
 
 ## Rehearsal timings (to fill in)
 
+Measured on `command-staging.smartsyndicator.com` on 2026-10-23 with `scripts/switch-rehearsal.mjs` (a brand-new connection
+for every probe; a reused connection hides the move):
+
 | Step | Estimate | Measured |
 |---|---|---|
-| Final dump and load | under 1 minute | |
-| Proxy flip to first Worker answer (staging) | about 1 minute | |
-| Rollback to first Railway answer (staging) | up to 5 minutes | |
+| Final dump and load | under 1 minute | not yet run (needs the Railway read channel) |
+| The API call that turns the proxy on | under 1 second | 0.2 to 0.4 s |
+| Proxy on to first Worker answer | about 1 minute | **60.6 s** (run 1), **120.7 s** (run 2), no wrong answers in between, only the old cached ones |
+| Proxy off to first non-Worker answer | up to 5 minutes | **299.3 s** |
+
+Budget 2 minutes for the switch and 5 minutes for a rollback. People whose resolver cached the proxied answer keep reaching
+the Worker until it expires, so a rollback is never "seconds". Staging record id: `cad5aa935f484a1f80006a75bee4d14f`
+(left grey-cloud, pointing at Railway). The real record is `39f2548c3b2f793f2025491a427b668f` (grey-cloud, TTL 3600; lower to
+60 a day ahead).

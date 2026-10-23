@@ -80,12 +80,22 @@ all zones in the account); user details and memberships (read). It is stored in 
   database. The database is still empty (no data copied yet), so nobody can sign in. `BETTER_AUTH_URL` is the real address, so
   sign-in testing happens on the staging hostname, not on workers.dev.
 
+## Staging hostname and switch rehearsal (2026-10-23)
+
+- `command-staging.smartsyndicator.com`: grey-cloud CNAME to Railway plus a Worker route (inert while grey-cloud). The real
+  record `command.smartsyndicator.com` is untouched. `scripts/cf-dns.mjs` lists, adds, proxies and deletes records.
+- Rehearsed the switch twice: 60.6 s and 120.7 s to the first Worker answer, rollback 299.3 s. Details in the runbook.
+- Lesson: a polling script must open a new connection every time, or it keeps reaching the old server over its old connection.
+
 ## Blocked: reading the Railway database
 
-The only read route is the app's own container over SSH. The permission system refused creating a key in `~/.ssh`, so no key
-exists and nothing was registered with Railway. Options: allow `ssh-keygen` and `railway ssh keys add` for a key named
-`railway_s2_migration`, or have a person run `railway ssh keys add` themselves. Then `node scripts/railway-dump.mjs --exclude digits_tokens`
-and `node scripts/dump-load.mjs <owner url file>`.
+The only read route is the app's own container over SSH (the Postgres has no public address, and opening one is a Railway
+account change). The permission system refused creating a key in `~/.ssh`. The Railway tool only accepts keys that live in
+`~/.ssh` ("Key not found" for the same key in `~/.config/s2-migration/`), so nothing is registered. An unused key pair
+`railway_s2_migration` sits in `~/.config/s2-migration/`; delete it if it is not used. To unblock: copy the `.pub` file into
+`~/.ssh` and run `railway ssh keys add --key ~/.ssh/railway_s2_migration.pub` (or allow me to), pass `--key` pointing at the
+private key to `railway-dump.mjs`, then `node scripts/railway-dump.mjs --exclude digits_tokens` and
+`node scripts/dump-load.mjs <owner url file>`. Delete the key from Railway afterwards (`railway ssh keys rm`).
 
 ## Shared PlanetScale server (checked 2026-10-23)
 

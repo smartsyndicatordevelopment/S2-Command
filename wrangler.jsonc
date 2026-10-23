@@ -5,6 +5,11 @@
   "compatibility_date": "2026-10-22",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  // Routes do nothing while a hostname's DNS record is grey-cloud (DNS-only, pointing at Railway); the switch is turning the proxy
+  // on for that record. The real hostname (command.smartsyndicator.com) is NOT listed: it is added at the cutover (docs/cutover-runbook.md).
+  "routes": [
+    { "pattern": "command-staging.smartsyndicator.com/*", "zone_name": "smartsyndicator.com" }
+  ],
   // Preview URLs are not wanted: the only public addresses are the workers.dev one and the real domain.
   "preview_urls": false,
   // The bundler swaps process.env.NODE_ENV for "development" unless told otherwise, and the app behaves differently in development.
