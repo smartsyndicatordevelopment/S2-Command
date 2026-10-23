@@ -1,24 +1,27 @@
 const router    = require('express').Router();
 const fetch     = require('node-fetch');
 const Anthropic = require('@anthropic-ai/sdk');
-const fs        = require('fs');
-const path      = require('path');
+const db        = require('../lib/db');
 
 const GHL_BASE    = 'https://services.leadconnectorhq.com';
 const GHL_VERSION = '2021-07-28';
-const HISTORY_PATH = path.join(__dirname, '../../sessions/ghl-email-history.json');
 const MAX_HISTORY  = 50;
 
 // ─── History helpers ──────────────────────────────────────────────────────────
 
-function readHistory() {
-  try { return JSON.parse(fs.readFileSync(HISTORY_PATH, 'utf8')); }
-  catch { return []; }
+// Kept in Postgres (ghl_email_history, one row) instead of a file on the container disk.
+async function readHistory() {
+  try {
+    const { rows } = await db.query('SELECT entries FROM ghl_email_history WHERE id = 1');
+    return rows.length ? rows[0].entries : [];
+  } catch { return []; }
 }
 
-function writeHistory(entries) {
-  fs.mkdirSync(path.dirname(HISTORY_PATH), { recursive: true });
-  fs.writeFileSync(HISTORY_PATH, JSON.stringify(entries, null, 2));
+async function writeHistory(entries) {
+  await db.query(
+    `INSERT INTO ghl_email_history (id, entries, updated_at) VALUES (1, $1::jsonb, now())
+     ON CONFLICT (id) DO UPDATE SET entries = EXCLUDED.entries, updated_at = now()`,
+    [JSON.stringify(entries)]);
 }
 
 function generateId() {
@@ -131,9 +134,9 @@ router.post('/ghl/email-studio/write', async (req, res) => {
       sequence:  sequence.map(e => ({ ...e, id: generateId() })),
     };
 
-    const history = readHistory();
+    const history = await readHistory();
     history.unshift(entry);
-    writeHistory(history.slice(0, MAX_HISTORY));
+    await writeHistory(history.slice(0, MAX_HISTORY));
 
     res.json(entry);
   } catch (err) {
@@ -142,16 +145,16 @@ router.post('/ghl/email-studio/write', async (req, res) => {
 });
 
 // GET /api/ghl/email-studio/history
-router.get('/ghl/email-studio/history', (req, res) => {
-  res.json(readHistory());
+router.get('/ghl/email-studio/history', async (req, res) => {
+  res.json(await readHistory());
 });
 
 // DELETE /api/ghl/email-studio/history/:id
-router.delete('/ghl/email-studio/history/:id', (req, res) => {
-  const history = readHistory();
+router.delete('/ghl/email-studio/history/:id', async (req, res) => {
+  const history = await readHistory();
   const filtered = history.filter(e => e.id !== req.params.id);
   if (filtered.length === history.length) return res.status(404).json({ error: 'Entry not found' });
-  writeHistory(filtered);
+  await writeHistory(filtered);
   res.json({ success: true });
 });
 

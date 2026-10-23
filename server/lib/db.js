@@ -1,30 +1,60 @@
 const { Pool } = require('pg');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const fs = require('fs');
 const path = require('path');
 
-let pool;
+// On Node there is one shared pool. On Cloudflare a Worker request must not reuse a connection opened by an
+// earlier request, so worker/index.js builds a small pool per request (through Hyperdrive) and runs the request
+// inside runWithPool(); every caller keeps using getPool()/query() unchanged.
+const requestPool = new AsyncLocalStorage();
+let sharedPool;
 
-function getPool() {
-  if (!pool) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL?.includes('railway.internal')
-        ? false
-        : { rejectUnauthorized: false },
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    });
-
-    pool.on('error', (err) => {
-      console.error('PostgreSQL pool error:', err.message);
-    });
-  }
+function makePool(connectionString, options = {}) {
+  const pool = new Pool({
+    connectionString,
+    ssl: connectionString?.includes('railway.internal') || options.noSsl
+      ? false
+      : { rejectUnauthorized: false },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+    ...options.pool,
+  });
+  pool.on('error', (err) => {
+    console.error('PostgreSQL pool error:', err.message);
+  });
   return pool;
 }
 
+function realPool() {
+  const scoped = requestPool.getStore();
+  if (scoped) return scoped;
+  if (!sharedPool) sharedPool = makePool(process.env.DATABASE_URL);
+  return sharedPool;
+}
+
+function runWithPool(pool, fn) {
+  return requestPool.run(pool, fn);
+}
+
+// A Proxy stands in for the pool: express-session's store and better-auth capture it once at load time, before
+// any request exists, and still need the current request's pool afterwards. The `has` trap answers
+// `"connect" in pool`, which better-auth checks while loading.
+const poolProxy = new Proxy({}, {
+  get(_t, prop) {
+    const pool = realPool();
+    const value = pool[prop];
+    return typeof value === 'function' ? value.bind(pool) : value;
+  },
+  has(_t, prop) { return prop in Pool.prototype || prop in realPool(); },
+});
+
+function getPool() {
+  return poolProxy;
+}
+
 async function query(sql, params) {
-  const client = await getPool().connect();
+  const client = await realPool().connect();
   try {
     return await client.query(sql, params);
   } finally {
@@ -62,4 +92,4 @@ async function runMigrations() {
   }
 }
 
-module.exports = { query, runMigrations, getPool };
+module.exports = { query, runMigrations, getPool, makePool, runWithPool };

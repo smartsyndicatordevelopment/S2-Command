@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "s2-command",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  // Preview URLs are not wanted: the only public addresses are the workers.dev one and the real domain.
+  "preview_urls": false,
+  // The bundler swaps process.env.NODE_ENV for "development" unless told otherwise, and the app behaves differently in development.
+  "define": { "process.env.NODE_ENV": "\"production\"" },
+  // The real iconv-lite breaks in Workers (see the note in the shim), so this smaller stand-in is used instead.
+  "alias": { "iconv-lite": "./worker/shims/iconv-lite.cjs" },
+  "assets": {
+    "directory": "./client/dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  // Private values are set with `wrangler secret put` and never written here.
+  "vars": {
+    "NODE_ENV": "production",
+    "CF_WORKER": "1",
+    "BETTER_AUTH_URL": "https://command.smartsyndicator.com"
+  },
+  // The Hyperdrive binding and the staging/real routes are added by the provisioning steps (docs/migration-notes.md).
+  // Every 15 minutes: the sync engine and metrics warm-up the Node server ran on a timer. Inert until JOBS_ENABLED=1.
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "observability": { "enabled": true }
+}

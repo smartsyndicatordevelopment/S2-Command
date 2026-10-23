@@ -77,9 +77,9 @@ async function loadFromDb() {
   return tokenCache;
 }
 
-async function persistToDb() {
+async function persistToDb(client) {
   try {
-    await db.query(
+    await (client || db).query(
       `INSERT INTO digits_tokens(id, access_token, refresh_token, business_id, expires_at, updated_at)
        VALUES(1, $1, $2, $3, $4, now())
        ON CONFLICT (id) DO UPDATE SET
@@ -105,7 +105,7 @@ async function init() {
   await loadFromDb();
 }
 
-async function refreshAccessToken() {
+async function callRefreshEndpoint() {
   const { DIGITS_CLIENT_ID, DIGITS_CLIENT_SECRET } = process.env;
 
   const res = await fetch(DIGITS_TOKEN_URL, {
@@ -131,8 +131,32 @@ async function refreshAccessToken() {
     businessId: tokenCache.businessId,
     expiresAt: Date.now() + ((data.expires_in || 3600) - 60) * 1000,
   };
-  await persistToDb();
-  return tokenCache.accessToken;
+}
+
+// Several app copies can run at once on Cloudflare, and Digits may rotate the refresh token, so two copies
+// refreshing together could invalidate each other. A transaction-scoped Postgres lock lets one copy refresh while
+// the others wait, then reuse its result from the database.
+async function refreshAccessToken() {
+  const client = await db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(7340211)');
+    const before = tokenCache.accessToken;
+    await loadFromDb();
+    if (tokenCache.accessToken && tokenCache.accessToken !== before && Date.now() < tokenCache.expiresAt) {
+      await client.query('COMMIT'); // another copy refreshed while this one waited for the lock
+      return tokenCache.accessToken;
+    }
+    await callRefreshEndpoint();
+    await persistToDb(client);
+    await client.query('COMMIT');
+    return tokenCache.accessToken;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function withRetry(fn, attempts = 3) {
@@ -174,4 +198,4 @@ async function forceRefresh() {
   return getToken();
 }
 
-module.exports = { init, getToken, forceRefresh, setTokens, getTokenCache, withRetry, DIGITS_TOKEN_URL };
+module.exports = { init, hydrate: loadFromDb, getToken, forceRefresh, setTokens, getTokenCache, withRetry, DIGITS_TOKEN_URL };

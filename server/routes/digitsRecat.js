@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const db = require('../lib/db');
 const {
   digitsConfigured, digitsQueryEntries, ensureS2Source, syncParties, syncTransactions,
   partyRef, partyExternalId, S2_SOURCE_EXTERNAL_ID, STRIPE_PARTY_ID, LABELS,
@@ -165,15 +166,21 @@ async function applyRecat(items) {
 // Preview snapshots are cached server-side so Apply uses ledger-authoritative data
 // (never client-supplied amounts) AND still works after the user has deleted the
 // originals (the delete-first ordering). Short-lived, in-memory.
-const previewCache = new Map(); // previewId -> { items, at }
+// Stored in Postgres (recat_previews) so any app copy can answer the Apply call.
 const PREVIEW_TTL_MS = 60 * 60 * 1000;
 
-function cachePreview(items) {
+async function cachePreview(items) {
   const now = Date.now();
-  for (const [id, v] of previewCache) if (now - v.at > PREVIEW_TTL_MS) previewCache.delete(id);
+  await db.query("DELETE FROM recat_previews WHERE created_at < now() - interval '1 hour'");
   const previewId = `pv_${now}_${Math.random().toString(36).slice(2, 10)}`;
-  previewCache.set(previewId, { items, at: now });
+  await db.query('INSERT INTO recat_previews (id, items) VALUES ($1, $2::jsonb)', [previewId, JSON.stringify(items)]);
   return previewId;
+}
+
+async function getPreview(previewId) {
+  const { rows } = await db.query(
+    "SELECT items FROM recat_previews WHERE id = $1 AND created_at > now() - interval '1 hour'", [previewId]);
+  return rows.length ? { items: rows[0].items } : null;
 }
 
 // GET /api/digits/recat/preview?year=&month=
@@ -184,7 +191,7 @@ router.get('/digits/recat/preview', async (req, res) => {
   if (!year || !month || month < 1 || month > 12) return res.status(400).json({ error: 'valid year and month required' });
   try {
     const items = await getUncategorizedIncome(year, month);
-    const previewId = cachePreview(items);
+    const previewId = await cachePreview(items);
     res.json({
       previewId, year, month,
       rules: rulesDisplay(),
@@ -206,7 +213,7 @@ router.get('/digits/recat/preview', async (req, res) => {
 router.post('/digits/recat/apply', async (req, res) => {
   if (!digitsConfigured()) return res.status(400).json({ error: 'Digits is not connected' });
   const { previewId, overrides } = req.body || {};
-  const snapshot = previewId && previewCache.get(previewId);
+  const snapshot = previewId && await getPreview(String(previewId));
   if (!snapshot) return res.status(410).json({ error: 'Preview expired -- please refresh the preview and try again.' });
 
   try {

@@ -1,204 +1,17 @@
+// Node entry point (Railway-style host and local development). The Express app itself lives in app.js so the
+// Cloudflare Worker (worker/index.js) serves exactly the same app.
+
 // better-auth (and its deps) rely on the global Web Crypto API, which Node 18 does
 // not expose as a global. Polyfill it before anything loads better-auth.
 if (!globalThis.crypto) globalThis.crypto = require('node:crypto').webcrypto;
 
 require('dotenv').config();
-const express = require('express');
-const session = require('express-session');
-const cors = require('cors');
-const path = require('path');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 
-const { runMigrations, getPool } = require('./lib/db');
+const { app, isDev, loadBetterAuth } = require('./app');
+const { runMigrations } = require('./lib/db');
 const { startSyncRunner } = require('./lib/syncEngine');
 const { warmAll: warmMetrics } = require('./lib/metricsCache');
-
-const authRouter = require('./routes/auth');
-const digitsOAuthRouter = require('./routes/digitsOAuth');
-const stripeRouter = require('./routes/stripe');
-const digitsRouter = require('./routes/digits');
-const salesTaxRouter = require('./routes/salesTax');
-const chatRouter     = require('./routes/chat');
-const ghlRouter        = require('./routes/ghl');
-const clickupRouter    = require('./routes/clickup');
-const ghlChatRouter       = require('./routes/ghlChat');
-const ghlEmailStudioRouter = require('./routes/ghlEmailStudio');
-const clickupChatRouter   = require('./routes/clickupChat');
-const fbChatRouter        = require('./routes/fbChat');
-const makeChatRouter      = require('./routes/makeChat');
-const digitsChatRouter    = require('./routes/digitsChat');
-const sessionsRouter      = require('./routes/sessions');
-const integrateRouter     = require('./routes/integrate');
-const statusRouter        = require('./routes/status');
-const businessPlanRouter  = require('./routes/businessPlan');
-const digitsRecatRouter   = require('./routes/digitsRecat');
-const { getAuth: getBetterAuth, isConfigured: betterAuthConfigured, runAuthMigrations, seedAuthCleanup } = require('./lib/auth');
-
-const app = express();
-const isDev = process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT_NAME;
-
-app.set('trust proxy', 1); // trust Railway's load balancer for HTTPS detection
-
-// Security headers -- CSP disabled until per-resource policy is tuned for the React SPA
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false,
-}));
-
-// better-auth handler -- mounted BEFORE express.json (it reads the raw body) and
-// OUTSIDE the /api requireAuth gate (login must be reachable unauthenticated). The
-// actual handler loads async during startup; until then (or when unconfigured) this
-// returns 503, so the route is inert and the existing express-session login is
-// completely unaffected.
-let betterAuthNodeHandler = null;
-app.all('/api/auth/*', (req, res) => {
-  if (betterAuthNodeHandler) return betterAuthNodeHandler(req, res);
-  return res.status(503).json({ error: 'auth not configured' });
-});
-
-// 12mb ceiling so the Overview agent can accept pasted/dropped images (base64) --
-// the chat route caps individual images at 5mb and 6 per message.
-app.use(express.json({ limit: '12mb' }));
-app.use(express.urlencoded({ extended: true, limit: '12mb' }));
-
-// Disable TRACE and other unused HTTP methods
-app.use((req, res, next) => {
-  if (['TRACE', 'TRACK', 'OPTIONS'].includes(req.method)) {
-    return res.status(405).set('Allow', 'GET, POST').end();
-  }
-  next();
-});
-
-// Prevent caching on all responses containing sensitive data
-app.use((req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache');
-  next();
-});
-
-app.use(cors({
-  origin: isDev ? 'http://localhost:5173' : false,
-  credentials: true,
-}));
-
-if (!isDev && !process.env.SESSION_SECRET) {
-  throw new Error('SESSION_SECRET environment variable is required in production');
-}
-
-// Persist sessions in Postgres so logins survive deploys (Railway's memory and
-// filesystem are ephemeral, so the default in-memory store logs everyone out on
-// every restart). Fall back to the in-memory store if the PG store can't be set
-// up -- a session-store problem must never lock users out of the whole app.
-let sessionStore;
-if (process.env.DATABASE_URL) {
-  try {
-    const PgSession = require('connect-pg-simple')(session);
-    sessionStore = new PgSession({
-      pool: getPool(),
-      tableName: 'user_sessions',
-      createTableIfMissing: true,
-    });
-    sessionStore.on('error', (err) => console.error('PG session store error:', err.message));
-  } catch (err) {
-    console.error('PG session store init failed -- using in-memory sessions:', err.message);
-    sessionStore = undefined;
-  }
-}
-
-app.use(session({
-  store: sessionStore,
-  secret: process.env.SESSION_SECRET || 'dev-secret-not-for-production',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    secure: !isDev,
-    sameSite: 'lax', // lax (not strict) so OAuth redirect callbacks still send the session cookie
-    maxAge: 24 * 60 * 60 * 1000,
-  },
-}));
-
-// Health check -- unauthenticated, used by Railway
-app.get('/health', (req, res) => res.json({ ok: true }));
-
-// Rate limit login attempts -- 5 tries per 15 minutes per IP
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many login attempts -- try again in 15 minutes' },
-});
-
-// Global rate limit for all authenticated API endpoints
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many requests -- please wait 15 minutes' },
-});
-
-// Stricter limit for the chat endpoint (each request calls Anthropic + possibly Stripe/Digits)
-const chatLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Chat rate limit reached -- please wait before sending more messages' },
-});
-
-// Unauthenticated routes
-app.use('/auth/login', loginLimiter);
-app.use('/auth', authRouter);
-app.use('/auth', digitsOAuthRouter); // /auth/digits and /auth/digits/callback
-
-// Auth middleware for all /api routes -- better-auth sessions only (the legacy
-// shared-password path has been fully removed).
-let fromNodeHeadersRef = null; // set at startup once better-auth/node loads
-async function requireAuth(req, res, next) {
-  try {
-    const auth = await getBetterAuth();
-    if (auth && fromNodeHeadersRef) {
-      const session = await auth.api.getSession({ headers: fromNodeHeadersRef(req.headers) });
-      if (session && session.user) { req.authUser = session.user; return next(); }
-    }
-  } catch (err) {
-    console.error('better-auth session check error:', err.message);
-  }
-  return res.status(401).json({ error: 'Unauthorized' });
-}
-
-// Apply auth and rate limiting once for all /api/* routes
-app.use('/api', requireAuth);
-app.use('/api', apiLimiter);
-app.use('/api/chat', chatLimiter); // additional limit on the Anthropic-backed endpoint
-
-app.use('/api', stripeRouter);
-app.use('/api', digitsRouter);
-app.use('/api', salesTaxRouter);
-app.use('/api', chatRouter);
-app.use('/api', ghlRouter);
-app.use('/api', clickupRouter);
-app.use('/api', ghlChatRouter);
-app.use('/api', ghlEmailStudioRouter);
-app.use('/api', clickupChatRouter);
-app.use('/api', fbChatRouter);
-app.use('/api', makeChatRouter);
-app.use('/api', digitsChatRouter);
-app.use('/api', sessionsRouter);
-app.use('/api', integrateRouter);
-app.use('/api', statusRouter);
-app.use('/api', businessPlanRouter);
-app.use('/api', digitsRecatRouter);
-
-// Serve React build in production
-if (!isDev) {
-  app.use(express.static(path.join(__dirname, '../client/dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-  });
-}
+const { runAuthMigrations, seedAuthCleanup, isConfigured: betterAuthConfigured } = require('./lib/auth');
 
 const PORT = process.env.PORT || 3001;
 
@@ -215,16 +28,10 @@ runMigrations()
       try {
         await runAuthMigrations();
         await seedAuthCleanup();
-        const auth = await getBetterAuth();
-        if (auth) {
-          const { toNodeHandler, fromNodeHeaders } = await import('better-auth/node');
-          betterAuthNodeHandler = toNodeHandler(auth);
-          fromNodeHeadersRef = fromNodeHeaders; // enables requireAuth to read better-auth sessions
-          console.log('better-auth active at /api/auth');
-        }
       } catch (err) {
         console.error('better-auth activation failed (non-fatal):', err.message);
       }
+      await loadBetterAuth();
     }
 
     app.listen(PORT, () => {
