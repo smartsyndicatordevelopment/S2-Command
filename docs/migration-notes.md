@@ -87,6 +87,19 @@ all zones in the account); user details and memberships (read). It is stored in 
 - Rehearsed the switch twice: 60.6 s and 120.7 s to the first Worker answer, rollback 299.3 s. Details in the runbook.
 - Lesson: a polling script must open a new connection every time, or it keeps reaching the old server over its old connection.
 
+## Parity against the live Railway site (signed out, 2026-10-23)
+
+- Production and this copy are the same code: the live site and the Worker serve the same JavaScript bundle
+  (`index-CBhBseDO.js`) and local `dev` is at the same commit as `origin/main`'s tip (`261fe3c`).
+- Byte check (SHA-1) of `/`, `/index.html`, `/robots.txt`, `/eula.html`, `/privacy.html`, `/logo.png`, `/favicon-32x32.png`,
+  `/apple-touch-icon.png`, the JS and CSS bundles and an unknown path: **11 of 11 identical**.
+- Found and fixed: a Windows checkout turned `client/index.html` and the public text files into CRLF (17 extra bytes), so the
+  built page differed from the Linux build. `.gitattributes` now forces LF for those files.
+- `scripts/smoke-compare.mjs` live versus Worker, 15 steps (status, headers, body): 10 identical, 5 differ only in the
+  `Accept-Ranges` header on compressed pages (Cloudflare drops it on compressed text; harmless, **needs the owner's
+  acceptance in the final report**).
+- Still not compared: anything signed in (needs the real data), Stripe, Digits, GoHighLevel, ClickUp, Meta and Anthropic pages.
+
 ## Blocked: reading the Railway database
 
 The only read route is the app's own container over SSH (the Postgres has no public address, and opening one is a Railway
