@@ -6,8 +6,9 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   // Routes do nothing while a hostname's DNS record is grey-cloud (DNS-only, pointing at Railway); the switch is turning the proxy
-  // on for that record. The real hostname (command.smartsyndicator.com) is NOT listed: it is added at the cutover (docs/cutover-runbook.md).
+  // on for that record (scripts/cutover.mjs). Both the real and the staging hostname are listed.
   "routes": [
+    { "pattern": "command.smartsyndicator.com/*", "zone_name": "smartsyndicator.com" },
     { "pattern": "command-staging.smartsyndicator.com/*", "zone_name": "smartsyndicator.com" }
   ],
   // Preview URLs are not wanted: the only public addresses are the workers.dev one and the real domain.
