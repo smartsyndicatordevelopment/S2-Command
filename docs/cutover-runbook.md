@@ -7,6 +7,23 @@ S2 is a single-user internal tool, so unlike a multi-user app it does not need a
 at the same moment: the Digits token (Digits may rotate the refresh token, so only one host may refresh) and the 15-minute
 sync job (so two hosts never sync at once).
 
+## The scripted version (use this; the manual lists below explain what each stage does)
+
+`node scripts/cutover.mjs <stage>`; every stage that changes something needs `--confirm`, and without it prints its plan (tested
+as dry runs on 2026-10-23, nothing changed).
+
+| Stage | What it does | When |
+|---|---|---|
+| `status` | Read-only: where the record points, who answers the live address, Worker health on workers.dev, whether the real route is in the config | any time |
+| `prepare --confirm` | Lowers the real record's TTL 3600 to 60 s (record stays grey-cloud, no behaviour change), adds the real route (inert while grey-cloud), builds and deploys | at least an hour before, ideally the day before |
+| `switch --confirm` | Checks Railway and the Worker both answer, final dump WITH the Digits token and verified load, stops Railway, sets `JOBS_ENABLED=1`, turns the proxy on, polls until the Worker answers | only with the owner's yes, at a quiet moment |
+| `rollback --confirm` | Proxy off, restarts Railway, removes `JOBS_ENABLED`, polls until Railway answers | if a check after the switch fails |
+
+Expect visitors to see errors for roughly 1 to 2 minutes between stopping Railway and the first Worker answer (single-user tool,
+so this is acceptable; do it when nobody is using it). After the switch run the checks below (sign in with an existing session,
+Overview, Cash Flow with Digits data, Email Studio, a Stripe-backed page, the chat endpoint) and watch `wrangler tail` for an hour.
+The Digits connection check: `Digits` on the status page must show connected after the switch.
+
 ## A day ahead
 
 1. Lower the TTL of the `command` record to 60 s (it is a DNS-only CNAME to Railway, so the switch is turning the proxy on).
