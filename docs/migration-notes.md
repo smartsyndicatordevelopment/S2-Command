@@ -54,8 +54,22 @@ until the cutover has held for a week. Nothing here touches Railway.
   database table fixes that; this is the one deliberate behaviour change.
 - The source folder is now linked to the Railway project on this PC (a local CLI setting; nothing changed on Railway).
 
-## Why the Cloudflare sign-in is still open
+## Cloudflare access (done 2026-10-23)
 
-The DashComm browser reached Cloudflare's approval page for Wrangler, but it only opens public https addresses, so it cannot
-hand the result back to Wrangler's local callback (`http://localhost:8976`). One command in a normal terminal finishes it:
-`npx wrangler login` (or set `CLOUDFLARE_API_TOKEN` for the session).
+`wrangler login` cannot finish in the DashComm browser (it only opens public https addresses, so it cannot hand the result back
+to `http://localhost:8976`). Instead an API token was created in the dashboard through the control browser:
+"S2 Command migration (delete after cutover)", scoped to this account. Permissions: Workers Scripts, KV, R2, Pages, Builds,
+Agents, Observability, Containers, Hyperdrive (edit); Account Settings, Workers Tail (read); zone Workers Routes and DNS (edit,
+all zones in the account); user details and memberships (read). It is stored in `~/.config/s2-migration/cloudflare-token`
+(never in the repo). Use it only through `node scripts/wr.mjs <wrangler args>`, which never prints it.
+**Delete the token** (dashboard, My Profile, API Tokens) and the file when the migration is finished.
+
+## Shared PlanetScale server (checked 2026-10-23)
+
+- `syndication-systems` is now a **PS-40** (not the PS-5 in the skill notes), Postgres 18.6, 2.7 GB of 10 GB used (autoscaling on),
+  direct connections 21 of 100, PgBouncer 1 of 400. S2 needs about 5 connections, so the budget is fine.
+- The PlanetScale dashboard shows pages but ignores clicks from the control browser (New role did nothing; direct URLs for
+  forms 404). The one missing step is therefore done by the owner: Settings, Roles, **New role**, name `s2-migration`,
+  inherit the `postgres` role, then save the connection string to `~/.config/s2-migration/ps-admin-url.txt` (the page's
+  copy button, then paste into that file; never into chat). After that `scripts/ps-provision.mjs` creates the database
+  `s2command` with an owner role and a limited app role.
