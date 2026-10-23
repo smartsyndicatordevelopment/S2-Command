@@ -287,7 +287,7 @@ async function runSyncForSystem(systemName) {
 }
 
 async function runAllSyncs() {
-  if (!process.env.DATABASE_URL) return;
+  if (!process.env.DATABASE_URL && !process.env.CF_WORKER) return; // the Worker reaches the database through Hyperdrive
 
   const { rows } = await db.query(
     'SELECT system_name FROM sync_registry WHERE active = true ORDER BY system_name'

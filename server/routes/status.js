@@ -49,7 +49,8 @@ async function safe(fn, fallback) {
 // -- Individual probes --
 
 async function checkPostgres() {
-  if (!process.env.DATABASE_URL) {
+  // On Cloudflare the database comes through the Hyperdrive binding, not a DATABASE_URL setting.
+  if (!process.env.DATABASE_URL && !process.env.CF_WORKER) {
     return mk('postgres', 'Postgres', 'Infrastructure', 'not_configured', 'DATABASE_URL not set');
   }
   await db.query('SELECT 1');

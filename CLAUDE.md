@@ -1,32 +1,37 @@
 # CLAUDE.md — S2 Command
 
 Internal command center for Smart Syndicator. Express + Postgres + React (Vite),
-deployed on Railway.
+deployed on Cloudflare Workers (database on PlanetScale through Hyperdrive).
+
+**Hosting (set at the Cloudflare cutover): this app deploys to Cloudflare. Do not deploy to Railway.
+Railway is only an idle fallback until <date set at cutover> and is then removed.**
 
 ## Deploy rule (standing directive)
 
-**Whenever we make ANY change to this project, always push to production — without
-asking.** This is Brandon's explicit standing authorization for S2 Command.
+Brandon's standing authorization for S2 Command: deploy finished work to production without asking.
 
-Workflow for every change here:
-1. Make the change and verify it builds (`cd client && npm run build` for client-side
-   changes).
-2. `git add` the changed files, commit with a clear message (end with the
-   `Co-Authored-By` line), and `git push origin main`.
-3. Railway auto-deploys `main` to production. Confirm the deploy reaches SUCCESS.
-
-Do not branch first for this project — push straight to `main`.
+1. Work on `dev` (use a worktree for branch work; the source folder stays on `dev`).
+2. Verify it builds (`npm run build`) and, if the schema changed, add a numbered file in `server/migrations/`.
+3. Commit with a clear message (end with the `Co-Authored-By` line). Push once per finished piece of work, not after every
+   commit (each push can run billed CI).
+4. Apply schema changes first: `node scripts/db-prepare.cjs --url-file <owner url file>` (it is safe to rerun). The Worker
+   never runs migrations at request time.
+5. Deploy: `npm run deploy` (builds the client, then `wrangler deploy`). Wrangler needs a Cloudflare token in the session
+   (`CLOUDFLARE_API_TOKEN`). Confirm `/health` answers and the page loads.
 
 ## Deploy facts
 
-- Git remote: `origin` → github.com/smartsyndicatordevelopment/S2-Command.git, branch `main`.
-- Railway project: **S2 Command Center** (`64a4ce43-e88d-412a-8fa9-7f9728f9cf4e`)
-  - Service: **S2-Command** (`601ca28f-d134-499b-8d2f-e189ff8f43f1`)
-  - Environment: **production** (`3c2fac31-6dee-4901-bfbe-e77e96d38acf`)
-  - Postgres service: `54a8612f-3659-497b-9f76-7ad07cb4b019`
-- Build: nixpacks — `npm install && cd client && npm install --include=dev && npm run build`
-- Start: `npm start`; health check at `/health`.
-- Prod-only DB scripts run via `railway run node server/scripts/<script>.js`.
+- Git remote: `origin` → github.com/smartsyndicatordevelopment/S2-Command.git.
+- Worker: **s2-command** (`wrangler.jsonc`), entry `worker/index.js`, shared Express app in `server/app.js`
+  (`server/index.js` is the Node entry used for local development). Same code runs on both.
+- Database: PlanetScale database `s2command` on the shared server `syndication-systems`, reached through the Hyperdrive config
+  `s2-command` (id in `wrangler.jsonc`; caching off, connection limit 5, limited role). Owner role for schema work only.
+- Private settings are Worker secrets (`wrangler secret put` / `scripts/worker-set-secrets.mjs`), never in a file.
+- Cron: every 15 minutes runs the sync engine and metrics warm-up (`server/lib/scheduledJobs.js`), only when the secret
+  `JOBS_ENABLED=1` is set.
+- Rate limits, recategorize previews and Email Studio history live in Postgres (migration `007_shared_state.sql`).
+- Digits token refresh takes a Postgres lock; never copy `digits_tokens` to a second live copy (the refresh token may rotate).
+- Health check at `/health`. Migration notes, cost ledger and cutover runbook are in `docs/`.
 
 ## Digits integration -- what the app can and cannot write
 

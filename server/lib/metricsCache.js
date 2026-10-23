@@ -36,7 +36,7 @@ async function set(key, data) {
 
 // Lazy-required to avoid circular deps at module load time
 async function warmAll() {
-  if (!process.env.STRIPE_SECRET_KEY || !process.env.DATABASE_URL) {
+  if (!process.env.STRIPE_SECRET_KEY || (!process.env.DATABASE_URL && !process.env.CF_WORKER)) {
     return;
   }
   try {

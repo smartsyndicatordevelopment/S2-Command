@@ -100,7 +100,35 @@ all zones in the account); user details and memberships (read). It is stored in 
   acceptance in the final report**).
 - Still not compared: anything signed in (needs the real data), Stripe, Digits, GoHighLevel, ClickUp, Meta and Anthropic pages.
 
-## Blocked: reading the Railway database
+## Data copy and signed-in checks (2026-10-23)
+
+- Owner said to go with the recommendations, so the temporary key pair was copied into `~/.ssh` and registered with Railway as
+  `s2-migration-temp`. **Remove it at the end:** `railway ssh keys rm s2-migration-temp`, then delete
+  `~/.ssh/railway_s2_migration*` and the original pair in `~/.config/s2-migration/`.
+- `scripts/railway-dump.mjs --exclude digits_tokens` then `scripts/dump-load.mjs`: 14 tables, 244 rows, every count and checksum
+  identical to Railway, committed in one transaction. Whole copy 4 s. At the cutover run the dump WITHOUT `--exclude` so the
+  Digits token row comes across with the final data.
+- The Railway volume `/data` holds only `tokens.json` (1.5 KB, an old QuickBooks token file; contents not read). Nothing in the
+  code uses it. Keep it inside the final backup, then it goes with the project. `/app/sessions` is empty or absent, so there is
+  no Email Studio history to carry over.
+- `scripts/mint-test-session.mjs create|remove` makes a 2-hour test session for the owner account in the COPY only (never in
+  Railway) so signed-in routes can be tested without the password; removed after use.
+- Signed-in checks on the deployed Worker with the real data (`scripts/signed-in-worker.mjs`): session, chat history lists
+  (12 overview chats), business plan, integrations status, sync systems, Email Studio history: all 200 in 230 to 880 ms.
+  From the Worker, Stripe, Meta Ads, GoHighLevel, ClickUp and Anthropic report connected. Digits shows disconnected until the
+  token row is copied at the cutover; Make has no key on Railway either.
+- Bugs found and fixed by those checks: the status page said "DATABASE_URL not set" on the Worker; the metrics warm-up and the
+  sync engine both quietly did nothing without `DATABASE_URL`, which would have silently disabled the scheduled job.
+
+## Decisions taken (owner: "go with your recommendations", 2026-10-23)
+
+- The `Accept-Ranges` header difference on compressed pages is accepted (harmless Cloudflare behaviour).
+- Email Studio history now persists across deploys (it was wiped on every Railway deploy).
+- CLAUDE.md in this branch carries the new deploy rule (work on `dev`, push once per finished piece, deploy with
+  `npm run deploy`); the "Hosting" line still needs its fallback date filled in at the cutover. The source folder's CLAUDE.md
+  changes when this branch is merged.
+
+## Was blocked: reading the Railway database (now unblocked)
 
 The only read route is the app's own container over SSH (the Postgres has no public address, and opening one is a Railway
 account change). The permission system refused creating a key in `~/.ssh`. The Railway tool only accepts keys that live in

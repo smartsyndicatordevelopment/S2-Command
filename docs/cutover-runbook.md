@@ -48,7 +48,7 @@ for every probe; a reused connection hides the move):
 
 | Step | Estimate | Measured |
 |---|---|---|
-| Final dump and load | under 1 minute | not yet run (needs the Railway read channel) |
+| Final dump and load (14 tables, 244 rows, every table's count and checksum identical to Railway) | under 1 minute | **4 s** (dump 2 s, load 2 s), run twice |
 | The API call that turns the proxy on | under 1 second | 0.2 to 0.4 s |
 | Proxy on to first Worker answer | about 1 minute | **60.6 s** (run 1), **120.7 s** (run 2), no wrong answers in between, only the old cached ones |
 | Proxy off to first non-Worker answer | up to 5 minutes | **299.3 s** |
