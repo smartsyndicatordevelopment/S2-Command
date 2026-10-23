@@ -12,11 +12,7 @@ import Messaging from '../tabs/Messaging';
 import BusinessPlan from '../tabs/BusinessPlan';
 import SalesTax from '../tabs/SalesTax';
 import Frameworks from '../tabs/Frameworks';
-import GHLMcp from '../tabs/GHLMcp';
-import ClickUpMcp from '../tabs/ClickUpMcp';
 import FBAds from '../tabs/FBAds';
-import MakeAgent from '../tabs/MakeAgent';
-import DigitsAgent from '../tabs/DigitsAgent';
 import Settings from '../tabs/Settings';
 import CashFlow from '../tabs/CashFlow';
 import RecategorizeIncome from '../tabs/RecategorizeIncome';
@@ -50,11 +46,7 @@ const NAV_ITEMS = [
     label: 'Tools',
     children: [
       { id: 'salestax',   label: 'Sales Tax Calculator' },
-      { id: 'ghlmcp',    label: 'GHL Agent' },
-      { id: 'clickupmcp', label: 'ClickUp Agent' },
       { id: 'fbads',     label: 'Facebook Ads Agent' },
-      { id: 'makeagent', label: 'Make.com Agent' },
-      { id: 'digitsagent', label: 'Digits Agent' },
     ],
   },
   { id: 'settings', label: 'Settings' },
@@ -73,11 +65,7 @@ const TAB_COMPONENTS = {
   plan:       BusinessPlan,
   salestax:   SalesTax,
   frameworks: Frameworks,
-  ghlmcp:     GHLMcp,
-  clickupmcp: ClickUpMcp,
   fbads:      FBAds,
-  makeagent:  MakeAgent,
-  digitsagent: DigitsAgent,
   settings:   Settings,
 };
 
