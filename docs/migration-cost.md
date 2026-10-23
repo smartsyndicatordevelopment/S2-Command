@@ -28,11 +28,11 @@ Expected saving once Railway is removed: about $1.80 a month. One-time cost: non
 
 | Date | Item | Amount | Approved by | Recurring? | Estimate line |
 |---|---|---|---|---|---|
-| (none yet) | | | | | |
+| 2026-10-23 | Hyperdrive config, PlanetScale database `s2command`, Worker, cron | $0.00 | n/a (shared plan and server) | none | all lines of the frozen estimate |
 
 ## 4. Parallel-run overlap
 
-Not started. Counts from the first deployed copy until Railway is removed.
+First Cloudflare deploy 2026-10-23. Railway keeps its stopped service and Postgres until removal on or after 2026-10-30; fill in the real figure from `railway usage` after removal.
 
 ## 5. Effort
 

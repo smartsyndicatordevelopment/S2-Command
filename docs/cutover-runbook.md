@@ -74,3 +74,23 @@ Budget 2 minutes for the switch and 5 minutes for a rollback. People whose resol
 the Worker until it expires, so a rollback is never "seconds". Staging record id: `cad5aa935f484a1f80006a75bee4d14f`
 (left grey-cloud, pointing at Railway). The real record is `39f2548c3b2f793f2025491a427b668f` (grey-cloud, TTL 3600; lower to
 60 a day ahead).
+
+## What actually happened (2026-10-23)
+
+- 16:31 UTC `prepare`: real record TTL 3600 to 60 s, real route added, Worker redeployed. Waited well past the old hour.
+- 20:45:13 UTC `switch --confirm` (quiet check first: last chat July 16, last sign-in that morning):
+  final dump (18 tables, every checksum identical, including `digits_tokens`) and verified load 4 s; Railway stopped 20:45:18;
+  `JOBS_ENABLED=1` 20:45:24; proxy on 20:45:27; **first Worker answer on the real address 23.7 s later (20:45:51)**, 37 s from the
+  start. No failed polls reported.
+- Checks on the real address (a 2-hour test session for the owner in the live database, deleted afterwards): page and static files
+  200 with the same headers; session, chat history (12), business plan, sync systems, Email Studio history all 200; integrations
+  7 of 8 connected (Digits connected; Make has no key, same as Railway); Digits-backed pages (P&L, cash flow, software
+  subscriptions) returned real data.
+- Railway disconnected from GitHub (`railway service source disconnect`); its service is stopped, not deleted.
+
+### Rollback caveat (read before using `cutover.mjs rollback`)
+
+Railway was stopped with `railway down` and then disconnected from GitHub. `railway redeploy` may therefore not be able to rebuild
+it; if it fails, reconnect first (`railway service source connect --repo smartsyndicatordevelopment/S2-Command --branch main --service S2-Command`).
+Whatever was written on the Worker since the switch (sessions, chat, Email Studio history, sync cache) lives only in PlanetScale.
+Do not restart Railway while the Worker's `JOBS_ENABLED` is on, or both would run the sync.

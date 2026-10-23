@@ -1,12 +1,11 @@
 # CLAUDE.md — S2 Command
 
-Internal command center for Smart Syndicator. Express + Postgres + React (Vite). The same code runs on two hosts:
-Railway (Node server, `server/index.js`) and Cloudflare Workers (`worker/index.js`, database on PlanetScale through Hyperdrive).
+Internal command center for Smart Syndicator. Express + Postgres + React (Vite), running on Cloudflare Workers
+(`worker/index.js`, shared app in `server/app.js`), database on PlanetScale through Hyperdrive. `server/index.js` is the Node
+entry kept for local development and as the reference copy.
 
-**Hosting status: production is STILL Railway until the Cloudflare cutover (docs/cutover-runbook.md,
-`node scripts/cutover.mjs status` shows who is answering). The Cloudflare copy is deployed and tested but not live.
-At the cutover this section changes to: "deploys to Cloudflare; do not deploy to Railway; Railway is only an idle fallback
-until <date>".**
+**Hosting: this app deploys to Cloudflare. Do not deploy to Railway. Cut over 2026-10-23 20:45 UTC; Railway is only an idle
+fallback (stopped, disconnected from GitHub) until 2026-10-30, then it is removed.**
 
 ## Deploy rule (standing directive)
 
@@ -15,15 +14,15 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
 1. Work on `dev` (use a worktree for branch work; the source folder stays on `dev`).
 2. Verify it builds (`npm run build`); if the schema changed, add a numbered file in `server/migrations/`.
 3. Commit with a clear message (end with the `Co-Authored-By` line). Push once per finished piece of work, not after every
-   commit.
-4. **Until the cutover:** merge `dev` into `main` and push; Railway auto-deploys `main`. Confirm the deploy reaches SUCCESS and
-   `/health` answers. Keep the Cloudflare copy in step with `npm run deploy` so the cutover is not a big jump.
-5. **After the cutover:** apply schema changes first (`node scripts/db-prepare.cjs --url-file <owner url file>`, safe to rerun),
-   then `npm run deploy` (builds the client, then `wrangler deploy`; needs `CLOUDFLARE_API_TOKEN`). Railway is no longer deployed to.
+   commit. Merge `dev` into `main` when pushing.
+4. Apply schema changes first: `node scripts/db-prepare.cjs --url-file <owner url file>` (safe to rerun). The Worker never runs
+   migrations at request time.
+5. Deploy: `npm run deploy` (builds the client, then `wrangler deploy`; needs `CLOUDFLARE_API_TOKEN` in the session). Confirm
+   `/health` answers on https://command.smartsyndicator.com and the page loads. Pushing to GitHub deploys nothing by itself.
 
 ## Deploy facts
 
-### Cloudflare (ready, not live until the cutover)
+### Cloudflare (live)
 
 - Git remote: `origin` → github.com/smartsyndicatordevelopment/S2-Command.git.
 - Worker: **s2-command** (`wrangler.jsonc`), entry `worker/index.js`, shared Express app in `server/app.js`
@@ -37,13 +36,13 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
 - Digits token refresh takes a Postgres lock; never copy `digits_tokens` to a second live copy (the refresh token may rotate).
 - Health check at `/health`. Migration notes, cost ledger and cutover runbook are in `docs/`.
 
-### Railway (live production until the cutover)
+### Railway (idle fallback until 2026-10-30, then removed)
 
 - Railway project: **S2 Command Center** (`64a4ce43-e88d-412a-8fa9-7f9728f9cf4e`)
   - Service: **S2-Command** (`601ca28f-d134-499b-8d2f-e189ff8f43f1`)
   - Environment: **production** (`3c2fac31-6dee-4901-bfbe-e77e96d38acf`)
   - Postgres service: `54a8612f-3659-497b-9f76-7ad07cb4b019`
-- Railway auto-deploys `main`. Build: nixpacks, `npm install && cd client && npm install --include=dev && npm run build`.
+- Disconnected from GitHub on 2026-10-23, so a push can never redeploy it (it tracked `smartsyndicatordevelopment/S2-Command`, branch `main`; reconnect with `railway service source connect --repo smartsyndicatordevelopment/S2-Command --branch main --service S2-Command`). Old build: nixpacks, `npm install && cd client && npm install --include=dev && npm run build`.
 - Start: `npm start` (runs migrations at start, then the Node server); health check at `/health`.
 - Prod-only DB scripts run via `railway run node server/scripts/<script>.js`.
 
