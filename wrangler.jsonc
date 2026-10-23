@@ -32,7 +32,7 @@
       "localConnectionString": "postgresql://frost:frost@127.0.0.1:5433/s2_cf"
     }
   ],
-  // The staging/real routes and the staging/real routes are added by the provisioning steps (docs/migration-notes.md).
+  // The staging/real routes are added by the provisioning steps (docs/migration-notes.md).
   // Every 15 minutes: the sync engine and metrics warm-up the Node server ran on a timer. Inert until JOBS_ENABLED=1.
   "triggers": { "crons": ["*/15 * * * *"] },
   "observability": { "enabled": true }

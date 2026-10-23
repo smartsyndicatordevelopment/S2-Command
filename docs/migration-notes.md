@@ -41,4 +41,21 @@ until the cutover has held for a week. Nothing here touches Railway.
 2. Railway read channel (temporary SSH key), dump and load with checksums, rehearse the delta sync.
 3. Deploy to workers.dev, run the comparison against it and against live Railway (read-only).
 4. Staging hostname `command-staging.smartsyndicator.com`, time the switch and rollback.
-5. Cutover runbook, then cutover with Brandon's yes.
+5. Finish the cutover runbook with measured timings (draft: `docs/cutover-runbook.md`), then cutover with Brandon's yes.
+
+## Findings from the Railway inventory (read-only, 2026-10-23)
+
+- Railway holds 19 settings to copy (names only: Anthropic, Stripe, Digits, GoHighLevel, ClickUp, Meta, session and encryption
+  keys). Skipped: Railway's own, the database address, the unused QuickBooks and old dashboard-password values, and
+  `TOKENS_PATH` (a leftover that no code reads). `scripts/worker-set-secrets.mjs --dry-run` lists the names.
+- A 500 MB volume `s2-command-volume` is mounted at `/data` and holds 49 MB. Nothing in the current code reads it. While the
+  temporary SSH key is registered, list `/data` before deciding it can be dropped; anything still wanted goes to R2 or the database.
+- Email Studio history lived in `/app/sessions`, which is not on the volume, so Railway wiped it on each deploy. The new
+  database table fixes that; this is the one deliberate behaviour change.
+- The source folder is now linked to the Railway project on this PC (a local CLI setting; nothing changed on Railway).
+
+## Why the Cloudflare sign-in is still open
+
+The DashComm browser reached Cloudflare's approval page for Wrangler, but it only opens public https addresses, so it cannot
+hand the result back to Wrangler's local callback (`http://localhost:8976`). One command in a normal terminal finishes it:
+`npx wrangler login` (or set `CLOUDFLARE_API_TOKEN` for the session).
