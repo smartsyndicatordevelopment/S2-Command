@@ -12,7 +12,7 @@ let sharedPool;
 function makePool(connectionString, options = {}) {
   const pool = new Pool({
     connectionString,
-    ssl: connectionString?.includes('railway.internal') || options.noSsl
+    ssl: connectionString?.includes('railway.internal') || connectionString?.includes('@127.0.0.1') || options.noSsl
       ? false
       : { rejectUnauthorized: false },
     max: 10,

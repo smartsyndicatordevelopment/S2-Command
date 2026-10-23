@@ -115,7 +115,7 @@ if (!isDev && !process.env.SESSION_SECRET) {
 // every restart). Fall back to the in-memory store if the PG store can't be set
 // up -- a session-store problem must never lock users out of the whole app.
 let sessionStore;
-if (process.env.DATABASE_URL) {
+if (process.env.DATABASE_URL || process.env.CF_WORKER) {
   try {
     const PgSession = require('connect-pg-simple')(session);
     sessionStore = new PgSession({

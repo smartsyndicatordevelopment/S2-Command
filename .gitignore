@@ -7,3 +7,5 @@ server/tokens.json
 .DS_Store
 sessions/
 .gstack/
+.dev.vars
+.wrangler/

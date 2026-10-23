@@ -46,8 +46,7 @@ function mountClient() {
     const type = mime.lookup(target);
     const charset = mime.charsets.lookup(type, '');
     res.setHeader('Content-Type', type + (charset ? `; charset=${charset}` : ''));
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'public, max-age=0');
+    if (!res.getHeader('Accept-Ranges')) res.setHeader('Accept-Ranges', 'bytes');
     if (!asset.body || asset.status === 304) {
       res.end();
       return;

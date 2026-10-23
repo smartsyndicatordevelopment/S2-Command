@@ -24,7 +24,15 @@
     "CF_WORKER": "1",
     "BETTER_AUTH_URL": "https://command.smartsyndicator.com"
   },
-  // The Hyperdrive binding and the staging/real routes are added by the provisioning steps (docs/migration-notes.md).
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // PLACEHOLDER id: replaced with the real config id when the Hyperdrive config is created (docs/migration-notes.md).
+      "id": "00000000000000000000000000000000",
+      "localConnectionString": "postgresql://frost:frost@127.0.0.1:5433/s2_cf"
+    }
+  ],
+  // The staging/real routes and the staging/real routes are added by the provisioning steps (docs/migration-notes.md).
   // Every 15 minutes: the sync engine and metrics warm-up the Node server ran on a timer. Inert until JOBS_ENABLED=1.
   "triggers": { "crons": ["*/15 * * * *"] },
   "observability": { "enabled": true }
