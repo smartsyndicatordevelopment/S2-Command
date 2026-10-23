@@ -120,6 +120,25 @@ all zones in the account); user details and memberships (read). It is stored in 
 - Bugs found and fixed by those checks: the status page said "DATABASE_URL not set" on the Worker; the metrics warm-up and the
   sync engine both quietly did nothing without `DATABASE_URL`, which would have silently disabled the scheduled job.
 
+## Risk tests and the bugs they found (2026-10-23)
+
+- **Digits refresh lock** (`scripts/test-digits-refresh.cjs`, local test database, stubbed Digits server, no real keys): four
+  simultaneous callers with an expired token. First run FAILED (4 refresh calls instead of 1): the "did someone else already
+  refresh?" check compared against the in-memory token, which the first caller had already updated. Fixed by re-reading the
+  stored token after getting the lock and using it if still valid. Second finding: a failed save inside the lock was only logged,
+  so a rotated refresh token could have been lost; it now fails loudly. Now 4 of 4 checks pass (exactly one refresh call, all
+  callers get the same token, expiry stored, token encrypted at rest).
+- **Scheduled job**: fired through Wrangler's real scheduled handler (`/__scheduled`) with the job switch on locally. The job
+  ran ("Completed: 0 ok, 0 errors", S2 has no registered sync systems) and wrote a heartbeat row
+  (`server_cache` key `scheduled_jobs_last_run`) so a running schedule is visible in the database. The deployed Worker has the
+  switch off.
+- **Rate limits** on the deployed Worker with the temporary test session: `RateLimit-Remaining` 299, 298, 297, 296, so the
+  Postgres counters work across requests. (Unsigned requests are refused with 401 before the limiter, as on Railway.)
+- Local dev note: Wrangler's local log does not print the Worker's console output in this version; read it with
+  `POST /cdn-cgi/local/explorer/api/local/observability/query` (`SELECT ... FROM logs`). Two local dev servers can share one
+  port on Windows (another session's server was on 8788 and answered some of my first test requests); check
+  `netstat -ano | findstr :<port>` and use an unusual port.
+
 ## Decisions taken (owner: "go with your recommendations", 2026-10-23)
 
 - The `Accept-Ranges` header difference on compressed pages is accepted (harmless Cloudflare behaviour).

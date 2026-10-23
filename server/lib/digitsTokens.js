@@ -97,6 +97,7 @@ async function persistToDb(client) {
     );
   } catch (err) {
     console.error('Digits token persist failed:', err.message);
+    if (client) throw err; // inside the refresh lock a failed save must not be swallowed: the new refresh token would be lost
   }
 }
 
@@ -141,10 +142,10 @@ async function refreshAccessToken() {
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(7340211)');
-    const before = tokenCache.accessToken;
+    // Re-read what is stored now: a request (or another app copy) that held the lock before us may already have refreshed.
     await loadFromDb();
-    if (tokenCache.accessToken && tokenCache.accessToken !== before && Date.now() < tokenCache.expiresAt) {
-      await client.query('COMMIT'); // another copy refreshed while this one waited for the lock
+    if (tokenCache.accessToken && Date.now() < tokenCache.expiresAt) {
+      await client.query('COMMIT');
       return tokenCache.accessToken;
     }
     await callRefreshEndpoint();
