@@ -37,7 +37,13 @@ if (dryRun) process.exit(0);
 const file = path.join(os.tmpdir(), `s2-secrets-${process.pid}.json`);
 fs.writeFileSync(file, JSON.stringify(copy), { mode: 0o600 });
 try {
-  const wrangler = spawnSync('npx', ['wrangler', 'secret', 'bulk', file], { encoding: 'utf8', shell: true, cwd: path.resolve(import.meta.dirname, '..') });
+  const cfToken = fs.readFileSync(path.join(os.homedir(), '.config', 's2-migration', 'cloudflare-token'), 'utf8').trim();
+  const wrangler = spawnSync('npx', ['wrangler', 'secret', 'bulk', file], {
+    encoding: 'utf8',
+    shell: true,
+    cwd: path.resolve(import.meta.dirname, '..'),
+    env: { ...process.env, CLOUDFLARE_API_TOKEN: cfToken, CLOUDFLARE_ACCOUNT_ID: '1f8a493845a44c1c695cde23d2e468f2' },
+  });
   let out = `${wrangler.stdout}\n${wrangler.stderr}`;
   for (const value of Object.values(copy)) if (value.length > 5) out = out.split(value).join('<hidden>');
   console.log(out.slice(-800));

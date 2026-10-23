@@ -64,6 +64,29 @@ all zones in the account); user details and memberships (read). It is stored in 
 (never in the repo). Use it only through `node scripts/wr.mjs <wrangler args>`, which never prints it.
 **Delete the token** (dashboard, My Profile, API Tokens) and the file when the migration is finished.
 
+## Provisioned and deployed (2026-10-23)
+
+- PlanetScale role `s2-migration` (postgres permission) created in the dashboard with the keyboard (mouse clicks miss their
+  targets in the control browser; Tab, Space and Enter work, and a 1280x900 window helps). Its connection string is in
+  `~/.config/s2-migration/ps-admin-url.txt`. **Delete the role** (Settings, Roles) at the end.
+- Database `s2command` with roles `s2command_owner` (schema) and `s2command_app` (runtime; may also create tables because the
+  sync engine does). Strings are in `~/.config/s2-migration/s2command-*-url.txt`.
+- Schema applied with `scripts/db-prepare.cjs --url-file ...` (7 migrations plus Better Auth's tables).
+- Hyperdrive config `s2-command` id `a3e4e784d51d42a6b053169ee3df2d84`: app role, caching off, origin connection limit 5
+  (confirmed through the Cloudflare connector).
+- 18 settings copied from Railway to the Worker with `scripts/worker-set-secrets.mjs` (values never printed).
+- Worker `s2-command` deployed: https://s2-command.throbbing-dawn-3295.workers.dev (cron every 15 minutes, inert without
+  `JOBS_ENABLED=1`). Checked: `/health` 200, page loads with the same headers, protected routes 401, session check reaches the
+  database. The database is still empty (no data copied yet), so nobody can sign in. `BETTER_AUTH_URL` is the real address, so
+  sign-in testing happens on the staging hostname, not on workers.dev.
+
+## Blocked: reading the Railway database
+
+The only read route is the app's own container over SSH. The permission system refused creating a key in `~/.ssh`, so no key
+exists and nothing was registered with Railway. Options: allow `ssh-keygen` and `railway ssh keys add` for a key named
+`railway_s2_migration`, or have a person run `railway ssh keys add` themselves. Then `node scripts/railway-dump.mjs --exclude digits_tokens`
+and `node scripts/dump-load.mjs <owner url file>`.
+
 ## Shared PlanetScale server (checked 2026-10-23)
 
 - `syndication-systems` is now a **PS-40** (not the PS-5 in the skill notes), Postgres 18.6, 2.7 GB of 10 GB used (autoscaling on),

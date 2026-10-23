@@ -27,8 +27,9 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      // PLACEHOLDER id: replaced with the real config id when the Hyperdrive config is created (docs/migration-notes.md).
-      "id": "00000000000000000000000000000000",
+      // The S2 Command database `s2command` on the shared PlanetScale server, limited runtime role, query caching off,
+      // origin connection limit 5 (created 2026-10-23).
+      "id": "a3e4e784d51d42a6b053169ee3df2d84",
       "localConnectionString": "postgresql://frost:frost@127.0.0.1:5433/s2_cf"
     }
   ],

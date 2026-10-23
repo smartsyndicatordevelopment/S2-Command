@@ -14,6 +14,14 @@ if (args[0] === '--local-test') {
   process.env.BETTER_AUTH_URL = 'http://localhost:8787';
 }
 
+if (args[0] === '--url-file') {
+  // Owner connection string kept in a private file. Better Auth's table layout does not depend on its secret, so a
+  // placeholder is enough here (the real one is only set on the Worker).
+  process.env.DATABASE_URL = require('node:fs').readFileSync(args[1], 'utf8').trim();
+  process.env.BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET || 'schema-only-placeholder-not-used-at-runtime-0123456789';
+  process.env.BETTER_AUTH_URL = process.env.BETTER_AUTH_URL || 'https://command.smartsyndicator.com';
+}
+
 const { runMigrations, getPool } = require('../server/lib/db');
 const { runAuthMigrations, seedAuthCleanup, isConfigured } = require('../server/lib/auth');
 
