@@ -1,0 +1,12 @@
+# The site is built on Linux in production. A Windows checkout would otherwise turn these text files into CRLF and the built
+# site would differ byte for byte from the live one. Images stay binary so they are never rewritten.
+client/index.html text eol=lf
+client/public/*.html text eol=lf
+client/public/*.txt text eol=lf
+client/public/*.xml text eol=lf
+client/public/*.json text eol=lf
+client/public/*.webmanifest text eol=lf
+client/public/*.png binary
+client/public/*.ico binary
+client/public/*.jpg binary
+client/public/*.svg text eol=lf
