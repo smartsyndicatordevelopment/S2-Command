@@ -4,8 +4,8 @@ Internal command center for Smart Syndicator. Express + Postgres + React (Vite),
 (`worker/index.js`, shared app in `server/app.js`), database on PlanetScale through Hyperdrive. `server/index.js` is the Node
 entry kept for local development and as the reference copy.
 
-**Hosting: this app deploys to Cloudflare. Do not deploy to Railway. Cut over 2026-10-23 20:45 UTC; Railway is only an idle
-fallback (stopped, disconnected from GitHub) until 2026-10-30, then it is removed.**
+**Hosting: this app deploys to Cloudflare. Do not deploy to Railway. Cut over 2026-10-23 20:45 UTC. The Railway project was
+deleted the same day (its final backup is in `_Private Backups (outside every repo)/railway-final-2026-10-23/s2-command`).**
 
 ## Deploy rule (standing directive)
 
@@ -17,7 +17,7 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
    commit. Merge `dev` into `main` when pushing.
 4. Apply schema changes first: `node scripts/db-prepare.cjs --url-file <owner url file>` (safe to rerun). The Worker never runs
    migrations at request time.
-5. Deploy: `npm run deploy` (builds the client, then `wrangler deploy`; needs `CLOUDFLARE_API_TOKEN` in the session). Confirm
+5. Deploy: `npm run deploy` (builds the client, then `wrangler deploy`). It needs a Cloudflare API token in the session (`CLOUDFLARE_API_TOKEN`): the migration token was deleted on 2026-10-23, so create a new one when needed (account: Workers Scripts, Hyperdrive, Workers KV/R2 as needed; zone: Workers Routes and DNS edit) and delete it when done. Confirm
    `/health` answers on https://command.smartsyndicator.com and the page loads. Pushing to GitHub deploys nothing by itself.
 
 ## Deploy facts
@@ -36,15 +36,13 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
 - Digits token refresh takes a Postgres lock; never copy `digits_tokens` to a second live copy (the refresh token may rotate).
 - Health check at `/health`. Migration notes, cost ledger and cutover runbook are in `docs/`.
 
-### Railway (idle fallback until 2026-10-30, then removed)
+### Railway (deleted 2026-10-23)
 
-- Railway project: **S2 Command Center** (`64a4ce43-e88d-412a-8fa9-7f9728f9cf4e`)
-  - Service: **S2-Command** (`601ca28f-d134-499b-8d2f-e189ff8f43f1`)
-  - Environment: **production** (`3c2fac31-6dee-4901-bfbe-e77e96d38acf`)
-  - Postgres service: `54a8612f-3659-497b-9f76-7ad07cb4b019`
-- Disconnected from GitHub on 2026-10-23, so a push can never redeploy it (it tracked `smartsyndicatordevelopment/S2-Command`, branch `main`; reconnect with `railway service source connect --repo smartsyndicatordevelopment/S2-Command --branch main --service S2-Command`). Old build: nixpacks, `npm install && cd client && npm install --include=dev && npm run build`.
-- Start: `npm start` (runs migrations at start, then the Node server); health check at `/health`.
-- Prod-only DB scripts run via `railway run node server/scripts/<script>.js`.
+- The project **S2 Command Center** was deleted (soft delete; Railway erases it for good on 2026-10-25). Do not recreate it.
+- Final backup: `_Private Backups (outside every repo)/railway-final-2026-10-23/s2-command` (all 18 tables as JSON lines plus a
+  checksum manifest, taken at the cutover moment). The leftover legacy `/data/tokens.json` on the Railway volume was not backed up
+  (unused by the code).
+- `server/index.js` and `railway.toml` remain only as the Node reference entry and history.
 
 ## Digits integration -- what the app can and cannot write
 

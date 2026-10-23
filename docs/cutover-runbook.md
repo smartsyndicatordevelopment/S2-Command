@@ -94,3 +94,9 @@ Railway was stopped with `railway down` and then disconnected from GitHub. `rail
 it; if it fails, reconnect first (`railway service source connect --repo smartsyndicatordevelopment/S2-Command --branch main --service S2-Command`).
 Whatever was written on the Worker since the switch (sessions, chat, Email Studio history, sync cache) lives only in PlanetScale.
 Do not restart Railway while the Worker's `JOBS_ENABLED` is on, or both would run the sync.
+
+## Decommission (done 2026-10-23)
+
+The Railway project was deleted the same day (instead of after a week), on the owner's instruction, after a backup check. The
+rollback section above no longer applies: there is nothing to roll back to. To go back to Railway you would have to rebuild a project
+from the backup in `_Private Backups (outside every repo)/railway-final-2026-10-23/s2-command`.

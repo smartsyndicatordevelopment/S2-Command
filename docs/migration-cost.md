@@ -40,4 +40,7 @@ Session 1 (2026-10-23): inventory, fit check, code rework, local comparison.
 
 ## 6. Result
 
-After decommission.
+Railway removed the same day as the cutover (2026-10-23), so there was no week-long overlap: the Railway project is deleted and its
+final invoice still has to be checked against the ledger after the billing period closes (current cycle ends Nov 13).
+Steady state: Cloudflare about $0.00 added (shared Workers plan and shared PlanetScale server), Railway $0, against a Railway baseline of
+about $1.80 a month, so the saving is about $1.80 a month. One-time cost: none. Verify with `railway usage` and the Cloudflare invoice next cycle.

@@ -166,3 +166,24 @@ private key to `railway-dump.mjs`, then `node scripts/railway-dump.mjs --exclude
   inherit the `postgres` role, then save the connection string to `~/.config/s2-migration/ps-admin-url.txt` (the page's
   copy button, then paste into that file; never into chat). After that `scripts/ps-provision.mjs` creates the database
   `s2command` with an owner role and a limited app role.
+
+## Decommission and cleanup (2026-10-23, after the cutover)
+
+- Railway project **S2 Command Center deleted** (owner's instruction). It shows as deleted in `railway status` and in the usage report
+  (final erasure Oct 25). A final restorable backup of the database export is in
+  `_Private Backups (outside every repo)/railway-final-2026-10-23/s2-command`: 18 tables, 254 rows, every file checked against its
+  manifest. A second `pg_dump` was attempted afterwards but the database was already gone. The unused legacy `/data/tokens.json`
+  (1.5 KB) went with the volume.
+- Temporary access removed: the Railway SSH key (removed from the account, local key files deleted), the PlanetScale admin login
+  `s2-migration` (deleted in the dashboard; the other sessions' logins were not touched), the Cloudflare token "S2 Command migration"
+  (deleted; `wrangler whoami` now answers "Invalid access token"), the token and admin-login files, the duplicate password files and the
+  local `dump/` folder of real data.
+- Kept on purpose: the database's own logins `s2command_owner` (schema changes) and `s2command_app` (Hyperdrive), with their
+  connection files `~/.config/s2-migration/s2command-owner-url.txt` and `-app-url.txt`.
+- **Not done:** the two local test databases `s2_node` and `s2_cf` still sit in the shared local test Postgres (it was not running).
+  Drop them when it is next started: `DROP DATABASE s2_node; DROP DATABASE s2_cf;`.
+- Because the token is gone, `scripts/wr.mjs`, `scripts/cutover.mjs` and `scripts/cf-dns.mjs` need a new token file at
+  `~/.config/s2-migration/cloudflare-token` (or `CLOUDFLARE_API_TOKEN`) to work again.
+- Browser lesson: the shared control browser keeps other sessions' tabs open; reusing tab 0 replaced a Railway dashboard tab (restored
+  afterwards). In this Playwright-based browser, clicks wait for the tab to be in front (`browser_tabs select`), and the click tool takes
+  the element as `target`.
