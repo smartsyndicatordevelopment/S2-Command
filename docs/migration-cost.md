@@ -1,0 +1,43 @@
+# S2 Command: Railway to Cloudflare cost ledger
+
+Estimates are frozen once approved (approved 2026-10-23) and never edited. Actuals go in the spend log beside them.
+
+## 1. Baseline (Railway, read from `railway usage projects`, 2026-10-23)
+
+| Item | Amount |
+|---|---|
+| S2 Command Center, previous cycle (Sep 13 to Oct 13) | $1.80 |
+| S2 Command Center, current cycle so far (Oct 13 to now) | $0.60 |
+| Workspace total, previous cycle | $32.76 |
+
+## 2. Target estimate (frozen)
+
+| Line | Monthly | Shared? | Source |
+|---|---|---|---|
+| Workers Paid plan | $0.00 extra | Yes, $5 per account, already paid | Workers pricing page, read by earlier migrations |
+| Worker requests and CPU at S2's traffic (one internal user) | about $0.00 | n/a | Included allowance of the paid plan |
+| R2 storage | $0.00 | n/a | S2 stores no uploaded files |
+| Hyperdrive | $0.00 | n/a | Included |
+| PlanetScale database `s2command` on the shared server | $0.00 extra | Yes, $5 node already paid | Reused server, per skill |
+| Cron Trigger (every 15 minutes) | $0.00 | n/a | Included |
+| **Total added** | **about $0.00** | | |
+
+Expected saving once Railway is removed: about $1.80 a month. One-time cost: none expected beyond Claude usage.
+
+## 3. Spend log (actuals)
+
+| Date | Item | Amount | Approved by | Recurring? | Estimate line |
+|---|---|---|---|---|---|
+| (none yet) | | | | | |
+
+## 4. Parallel-run overlap
+
+Not started. Counts from the first deployed copy until Railway is removed.
+
+## 5. Effort
+
+Session 1 (2026-10-23): inventory, fit check, code rework, local comparison.
+
+## 6. Result
+
+After decommission.
