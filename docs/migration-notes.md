@@ -1,7 +1,15 @@
 # S2 Command: Cloudflare migration notes
 
-Branch `cloudflare-migration` (worktree `S2 Command-wt-cloudflare`). Railway keeps serving `command.smartsyndicator.com`
-until the cutover has held for a week. Nothing here touches Railway.
+> **STATUS: COMPLETE (2026-10-23).** S2 Command runs on Cloudflare (Worker `s2-command`, database `s2command` on PlanetScale through
+> Hyperdrive) at https://command.smartsyndicator.com. The Railway project is deleted (final backup in
+> `_Private Backups (outside every repo)/railway-final-2026-10-23/s2-command`), all temporary migration access is removed, and the work is
+> merged into `dev` and `main` (the `cloudflare-migration` branch and its worktree are gone). Routine follow-ups only: create a short-lived
+> Cloudflare token when next deploying (see CLAUDE.md), and confirm the Railway charge stops and Cloudflare stays about $0 after the
+> Nov 13 billing date.
+>
+> The sections below are the working log, written while the migration was in progress; where they say "Railway keeps serving", "blocked",
+> or "still to do", that was true at the time and is superseded by the status above and the "What actually happened" and "Decommission"
+> sections.
 
 ## What changed in the code
 
@@ -180,8 +188,8 @@ private key to `railway-dump.mjs`, then `node scripts/railway-dump.mjs --exclude
   local `dump/` folder of real data.
 - Kept on purpose: the database's own logins `s2command_owner` (schema changes) and `s2command_app` (Hyperdrive), with their
   connection files `~/.config/s2-migration/s2command-owner-url.txt` and `-app-url.txt`.
-- **Not done:** the two local test databases `s2_node` and `s2_cf` still sit in the shared local test Postgres (it was not running).
-  Drop them when it is next started: `DROP DATABASE s2_node; DROP DATABASE s2_cf;`.
+- The two local test databases `s2_node` and `s2_cf` were dropped from the shared local test Postgres on 2026-10-23 (it was started for that,
+  then stopped again with `pg_ctl stop`; the frostfm and tabor databases were not touched).
 - Because the token is gone, `scripts/wr.mjs`, `scripts/cutover.mjs` and `scripts/cf-dns.mjs` need a new token file at
   `~/.config/s2-migration/cloudflare-token` (or `CLOUDFLARE_API_TOKEN`) to work again.
 - Browser lesson: the shared control browser keeps other sessions' tabs open; reusing tab 0 replaced a Railway dashboard tab (restored
