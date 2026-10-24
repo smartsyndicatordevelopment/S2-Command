@@ -34,6 +34,7 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
   `JOBS_ENABLED=1` is set.
 - Rate limits, recategorize previews and Email Studio history live in Postgres (migration `007_shared_state.sql`).
 - Digits token refresh takes a Postgres lock; never copy `digits_tokens` to a second live copy (the refresh token may rotate).
+- Test bed (dev copy): see `docs/test-bed.md` (`wrangler.dev.jsonc`, Worker s2-command-dev). Never deploy it without `-c wrangler.dev.jsonc`.
 - Health check at `/health`. Migration notes, cost ledger and cutover runbook are in `docs/`.
 - Projects page (`client/src/tabs/Projects.jsx`, `server/lib/cloudflareProjects.js`, `GET /api/projects`): health and latest status of every Worker and Pages project
   in the Cloudflare account. Uses the **read-only** Worker secret `CF_API_TOKEN` and the var `CF_ACCOUNT_ID`; results cached 5 min in `server_cache`. Projects can be hidden/shown from the page itself (saved in `hidden_projects`, migration 008; hidden ones leave the totals). The cards can be sorted from a dropdown on the page (the choice is kept in the browser).

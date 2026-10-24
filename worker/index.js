@@ -38,6 +38,15 @@ function mountClient() {
       res.status(404).type('text/plain').send('Not found');
       return;
     }
+    // Test copy only (TEST_BAR=1 is set in wrangler.dev.jsonc, never in production): a thin red bar on the page.
+    if (process.env.TEST_BAR === '1' && target === '/index.html' && asset.status === 200) {
+      const bar = '<div style="position:fixed;top:0;left:0;right:0;height:22px;line-height:22px;z-index:2147483647;background:#c62828;color:#fff;'
+        + 'font:600 12px Inter,system-ui,sans-serif;text-align:center;pointer-events:none">TEST COPY - demo data only, nothing real is connected</div>'
+        + '<style>body{padding-top:22px}</style>';
+      const html = (await asset.text()).replace('</body>', `${bar}</body>`);
+      res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).send(html);
+      return;
+    }
     res.status(asset.status);
     for (const name of ['content-length', 'content-range', 'etag']) {
       const value = asset.headers.get(name);

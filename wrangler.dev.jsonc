@@ -1,0 +1,39 @@
+{
+  // The hosted test copy of S2 Command ("s2-command-dev"). Deploy it with:  npx wrangler deploy -c wrangler.dev.jsonc
+  // A SEPARATE Worker with its own database (s2command_dev, a different database on the same PlanetScale cluster), its own
+  // Hyperdrive configuration and its own throwaway secrets. It has no GoHighLevel, Stripe, Digits, ClickUp, Meta, Make, Anthropic or
+  // Cloudflare keys, no routes on real domains and no cron triggers, so it cannot message, charge or read anything real.
+  // Production is wrangler.jsonc and is never touched by this file.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "s2-command-dev",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "define": { "process.env.NODE_ENV": "\"production\"" },
+  "alias": { "iconv-lite": "./worker/shims/iconv-lite.cjs" },
+  "assets": {
+    "directory": "./client/dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // The test database's own Hyperdrive configuration (name s2-command-dev, caching off). Never the production id.
+      "id": "6e179825fd894157b3e04d444d2ed91b",
+      "localConnectionString": "postgresql://frost:frost@127.0.0.1:5433/s2_cf"
+    }
+  ],
+  // No cron triggers: nothing runs on a schedule in the test copy.
+  // Plain settings, not secrets. Only demo@test.local may sign up (done once by scripts/seed-dev.mjs).
+  "vars": {
+    "NODE_ENV": "production", "CF_WORKER": "1", "TEST_BAR": "1",
+    "BETTER_AUTH_URL": "https://s2-command-dev.smartsyndicator.workers.dev",
+    "AUTH_OWNER_EMAIL": "demo@test.local", "AUTH_ALLOWED_EMAILS": "demo@test.local"
+  },
+  "observability": { "enabled": true }
+}
