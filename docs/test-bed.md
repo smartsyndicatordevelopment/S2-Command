@@ -10,7 +10,8 @@ A hosted copy to click through before anything reaches production. Demo data onl
 ## How to use it
 
 - Deploy a batch to it: build the client (`cd client && npm run build`), then `npx wrangler deploy -c wrangler.dev.jsonc`. Never run `wrangler deploy` without `-c` for this purpose (that is production). It needs no approval.
-- Apply new database changes and reload demo data: `node scripts/seed-dev.cjs` (safe to repeat; refuses to run unless the database is `s2command_dev`).
+- Apply new database changes and reload demo data: `node scripts/seed-dev.cjs` (safe to repeat). `node scripts/seed-dev.cjs --reset` also clears the demo business plan and the cache first, then reseeds from scratch. It touches only the demo rows (fixed ids) and refuses to run unless the database is `s2command_dev`. The content is invented, for the fictitious sponsor "ABC Capital Group" (`scripts/lib/demo-content.cjs`): 12 chat sessions with 40 messages across the GoHighLevel, ClickUp, Facebook, Overview, Digits and Make agents, 19 change-log entries (some undone), and a filled-in business plan.
+- The GoHighLevel, Stripe, Digits and other live pages stay empty because no keys are set. Switch on the app's own Demo toggle in the menu to see its built-in sample numbers there.
 - Check it is healthy: `node scripts/check-dev.mjs`.
 - Private files on the owner's PC (never in git): `~/.config/dev-copies/s2command/ps-dev-url.txt` (the test database login) and `~/.config/dev-copies/s2command/dev-secrets.json` (the test Worker's secrets). Re-upload secrets with `node scripts/make-dev-secrets.mjs`.
 - If the test database login is replaced, point the Hyperdrive configuration at it: `node scripts/make-dev-hyperdrive.mjs <hyperdrive id>` (id is in `wrangler.dev.jsonc`).
