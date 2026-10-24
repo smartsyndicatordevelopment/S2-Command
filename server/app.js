@@ -26,6 +26,7 @@ const sessionsRouter      = require('./routes/sessions');
 const integrateRouter     = require('./routes/integrate');
 const statusRouter        = require('./routes/status');
 const businessPlanRouter  = require('./routes/businessPlan');
+const projectsRouter      = require('./routes/projects');
 const digitsRecatRouter   = require('./routes/digitsRecat');
 const { getAuth: getBetterAuth, isConfigured: betterAuthConfigured } = require('./lib/auth');
 
@@ -220,6 +221,7 @@ app.use('/api', sessionsRouter);
 app.use('/api', integrateRouter);
 app.use('/api', statusRouter);
 app.use('/api', businessPlanRouter);
+app.use('/api', projectsRouter);
 app.use('/api', digitsRecatRouter);
 
 // Serve React build in production

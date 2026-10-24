@@ -27,6 +27,8 @@
   "vars": {
     "NODE_ENV": "production",
     "CF_WORKER": "1",
+    // Read by the Projects page (with the CF_API_TOKEN secret, a read-only token).
+    "CF_ACCOUNT_ID": "1f8a493845a44c1c695cde23d2e468f2",
     "BETTER_AUTH_URL": "https://command.smartsyndicator.com"
   },
   "hyperdrive": [

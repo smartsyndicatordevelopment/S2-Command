@@ -378,6 +378,54 @@ function daysAgoDateObj(n) { return new Date(NOW_MS - n * day * 1000); }
 
 // ─── Registry ────────────────────────────────────────────────────────────────
 
+
+// ─── Cloudflare projects (/api/projects) ─────────────────────────────────────
+// Powers the Projects page. Made-up project names; a mix of healthy, slow, failing and idle so every state shows.
+
+const hoursAgoIso = (h) => new Date(NOW_MS - h * 3600 * 1000).toISOString();
+const demoProject = (name, host, over = {}) => ({
+  name, kind: 'worker', status: 'healthy', reason: 'Answering normally',
+  url: host ? 'https://' + host : null, hosts: host ? [host] : [],
+  httpStatus: host ? 200 : null, latencyMs: host ? 180 : null, checkedAt: hoursAgoIso(0.02),
+  lastDeployedAt: hoursAgoIso(30), deployedVia: 'wrangler', triggers: [], requests24h: 1200, errors24h: 0, ...over,
+});
+const DEMO_PROJECT_LIST = [
+  demoProject('northwind-portal', 'portal.northwind-demo.com', {
+    status: 'down', reason: 'Last check returned HTTP 502', httpStatus: 502, latencyMs: 410, requests24h: 3120, errors24h: 3120, lastDeployedAt: hoursAgoIso(2),
+  }),
+  demoProject('harbor-billing', 'billing.harbor-demo.com', {
+    status: 'degraded', reason: '96 of 1,480 requests failed (6.5%) in the last 24 hours', latencyMs: 940, requests24h: 1480, errors24h: 96, triggers: ['scheduled'], lastDeployedAt: hoursAgoIso(9),
+  }),
+  demoProject('summit-leads', 'app.summit-demo.com', {
+    status: 'degraded', reason: 'Slow: answered in 3.4 s', latencyMs: 3400, requests24h: 5400, errors24h: 4, triggers: ['scheduled', 'queue'], lastDeployedAt: hoursAgoIso(4),
+  }),
+  demoProject('s2-command', 'command.demo-company.com', { latencyMs: null, requests24h: 980, triggers: ['scheduled'], lastDeployedAt: hoursAgoIso(1) }),
+  demoProject('acme-marketing-site', 'acme-demo.com', { latencyMs: 95, requests24h: 8800, lastDeployedAt: hoursAgoIso(120) }),
+  demoProject('bluebird-booking', 'book.bluebird-demo.com', { latencyMs: 260, requests24h: 2100, errors24h: 6, lastDeployedAt: hoursAgoIso(52) }),
+  demoProject('cedar-api', 'api.cedar-demo.com', { httpStatus: 404, latencyMs: 130, requests24h: 20400, errors24h: 12, lastDeployedAt: hoursAgoIso(200) }),
+  demoProject('delta-docs', 'docs.delta-demo.com', { latencyMs: 110, requests24h: 640, lastDeployedAt: hoursAgoIso(700) }),
+  demoProject('evergreen-sync', null, { requests24h: 88, reason: 'No public address; judged by its traffic', triggers: ['queue'], lastDeployedAt: hoursAgoIso(300) }),
+  demoProject('old-landing-preview', null, { status: 'inactive', reason: 'No public address and no traffic in the last 24 hours', requests24h: 0, lastDeployedAt: hoursAgoIso(1500) }),
+  demoProject('spike-test', null, { status: 'inactive', reason: 'No public address and no traffic in the last 24 hours', requests24h: 0, lastDeployedAt: hoursAgoIso(2200) }),
+];
+const demoCount = (st) => DEMO_PROJECT_LIST.filter((p) => p.status === st).length;
+const DEMO_PROJECTS = {
+  configured: true,
+  generatedAt: hoursAgoIso(0.05),
+  summary: {
+    total: DEMO_PROJECT_LIST.length,
+    active: DEMO_PROJECT_LIST.length - demoCount('inactive'),
+    inactive: demoCount('inactive'),
+    healthy: demoCount('healthy'),
+    degraded: demoCount('degraded'),
+    down: demoCount('down'),
+    requests24h: DEMO_PROJECT_LIST.reduce((n, p) => n + p.requests24h, 0),
+    errors24h: DEMO_PROJECT_LIST.reduce((n, p) => n + p.errors24h, 0),
+  },
+  projects: DEMO_PROJECT_LIST,
+  warnings: [],
+};
+
 const DEMO_DATA = {
   '/api/subscriptions':          DEMO_SUBSCRIPTIONS,
   '/api/revenue':                { ytdRevenue: usdc(74280), year: nowDate.getFullYear(), invoiceCount: 89 },
@@ -387,6 +435,7 @@ const DEMO_DATA = {
   '/api/software-subscriptions': DEMO_SOFTWARE,
   '/api/cashflow':               DEMO_CASHFLOW,
   '/api/digits/recat/preview':   DEMO_RECAT,
+  '/api/projects':               DEMO_PROJECTS,
 };
 
 export function getDemoResponse(url) {

@@ -16,9 +16,11 @@ import FBAds from '../tabs/FBAds';
 import Settings from '../tabs/Settings';
 import CashFlow from '../tabs/CashFlow';
 import RecategorizeIncome from '../tabs/RecategorizeIncome';
+import Projects from '../tabs/Projects';
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview Agent' },
+  { id: 'projects', label: 'Projects' },
   {
     id: 'financials-group',
     label: 'Financials',
@@ -54,6 +56,7 @@ const NAV_ITEMS = [
 
 const TAB_COMPONENTS = {
   overview:   Overview,
+  projects:   Projects,
   financials: Financials,
   cashflow:   CashFlow,
   recat:      RecategorizeIncome,
