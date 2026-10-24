@@ -2,7 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { LogOut, ChevronDown, Sun, Moon, Database, Eye } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import AnalystPanel from './AnalystPanel';
-import Overview from '../tabs/Overview';
+// The Overview agent is hidden for now (kept in case a use for it comes up): to bring it back, restore this import, its nav item
+// and its TAB_COMPONENTS entry. The server side (`/api/chat`) is untouched.
+// import Overview from '../tabs/Overview';
 import Financials from '../tabs/Financials';
 import Targets from '../tabs/Targets';
 import Customers from '../tabs/Customers';
@@ -19,7 +21,7 @@ import RecategorizeIncome from '../tabs/RecategorizeIncome';
 import Projects from '../tabs/Projects';
 
 const NAV_ITEMS = [
-  { id: 'overview', label: 'Overview Agent' },
+  // { id: 'overview', label: 'Overview Agent' },  // hidden for now
   { id: 'projects', label: 'Projects' },
   {
     id: 'financials-group',
@@ -55,7 +57,6 @@ const NAV_ITEMS = [
 ];
 
 const TAB_COMPONENTS = {
-  overview:   Overview,
   projects:   Projects,
   financials: Financials,
   cashflow:   CashFlow,
@@ -171,13 +172,13 @@ function Clock() {
 const TAB_STORAGE_KEY = 's2:activeTab';
 
 // Persist the active tab so a page refresh reloads the view we're on rather than
-// snapping back to the Overview agent.
+// snapping back to the first page.
 function readInitialTab() {
   try {
     const saved = localStorage.getItem(TAB_STORAGE_KEY);
     if (saved && TAB_COMPONENTS[saved]) return saved;
   } catch { /* localStorage unavailable -- fall through */ }
-  return 'overview';
+  return 'projects';
 }
 
 export default function Layout({ onLogout }) {

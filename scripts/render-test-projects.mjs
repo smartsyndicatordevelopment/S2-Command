@@ -77,6 +77,22 @@ test('demo: numbers are formatted and nothing is undefined or NaN', () => noJunk
 test('demo: this app (no latency) is shown without a made-up number', () => {
   assert.match(html, /HTTP 200, This app/);
 });
+test('every active card has a Hide button that names the project', () => {
+  assert.match(html, /aria-label="Hide northwind-portal on this page"/);
+  assert.ok(!/Hidden projects/.test(html));
+});
+test('hidden projects leave the cards and the totals and wait in a Hidden list with a Show button', () => {
+  const name = d.projects.find((x) => x.status === 'down').name;
+  const projects = d.projects.map((x) => (x.name === name ? { ...x, hidden: true } : x));
+  const h = render({ ...d, projects });
+  assert.match(h, /Hidden projects \(1\)/);
+  assert.ok(h.includes(`aria-label="Show ${name} on this page"`));
+  assert.ok(!h.includes(`aria-label="Hide ${name} on this page"`));
+  const after = h.split('Hidden projects')[0];
+  assert.ok(!after.includes(`title="${name}"`), 'hidden project still shown as a card');
+  assert.match(h, /Needs attention<\/p>[\s\S]{0,400}?>\d+</);
+  noJunk(h);
+});
 test('not configured: explains the missing token', () => {
   const h = render({ configured: false, projects: [], summary: { total: 0 }, warnings: [] });
   assert.match(h, /read-only Cloudflare token/);

@@ -12,6 +12,7 @@
  * The result is cached in server_cache for a few minutes so opening the page does not re-probe every site each time.
  */
 const cache = require('./metricsCache');
+const { query } = require('./db');
 
 const API = 'https://api.cloudflare.com/client/v4';
 const CACHE_KEY = 'cloudflare:projects';
@@ -245,4 +246,34 @@ async function getProjects({ force = false, selfHost = null } = {}) {
   return { ...report, cached: false, ageSeconds: 0 };
 }
 
-module.exports = { getProjects, buildReport, classify, pickPrimary, hostOfRoute, summarize, CloudflareError };
+const key = (p) => `${p.kind}:${p.name}`;
+
+/** Names the owner chose to hide, as "kind:name" strings. */
+async function getHiddenKeys() {
+  const { rows } = await query('SELECT kind, name FROM hidden_projects');
+  return new Set(rows.map(key));
+}
+
+/** Show or hide one project. Only a "worker" or "pages" project with a plain name is accepted. */
+async function setHidden({ kind, name, hidden }) {
+  if (!['worker', 'pages'].includes(kind)) throw new Error('bad kind');
+  if (typeof name !== 'string' || !name || name.length > 200) throw new Error('bad name');
+  if (hidden) {
+    await query('INSERT INTO hidden_projects (kind, name) VALUES ($1, $2) ON CONFLICT DO NOTHING', [kind, name]);
+  } else {
+    await query('DELETE FROM hidden_projects WHERE kind = $1 AND name = $2', [kind, name]);
+  }
+}
+
+/**
+ * Marks each project hidden or not, and counts only the visible ones in the summary (the totals on the page are about what
+ * you chose to see). Hidden projects stay in the list, flagged, so they can be shown again.
+ */
+function applyHidden(report, hiddenKeys) {
+  const projects = report.projects.map((p) => ({ ...p, hidden: hiddenKeys.has(key(p)) }));
+  const summary = summarize(projects.filter((p) => !p.hidden));
+  summary.hidden = projects.filter((p) => p.hidden).length;
+  return { ...report, projects, summary };
+}
+
+module.exports = { getProjects, getHiddenKeys, setHidden, applyHidden, buildReport, classify, pickPrimary, hostOfRoute, summarize, CloudflareError };

@@ -3,7 +3,7 @@
 //   node scripts/test-projects.cjs --live     also runs the real report against the Cloudflare account and prints it
 //                                             (needs the read-only token in ~/.config/s2-projects/cf-read-token.txt)
 const assert = require('node:assert/strict');
-const { classify, pickPrimary, hostOfRoute, summarize } = require('../server/lib/cloudflareProjects');
+const { classify, pickPrimary, hostOfRoute, summarize, applyHidden } = require('../server/lib/cloudflareProjects');
 
 let failed = 0;
 const test = (name, fn) => {
@@ -72,6 +72,21 @@ test('summary counts add up', () => {
     { status: 'inactive', requests24h: 0, errors24h: 0 }, { status: 'degraded', requests24h: 5, errors24h: 5 },
   ]);
   assert.deepEqual([s.total, s.active, s.inactive, s.healthy, s.degraded, s.down, s.requests24h, s.errors24h], [4, 3, 1, 1, 1, 1, 15, 6]);
+});
+
+test('hiding removes a project from the totals but keeps it in the list, flagged', () => {
+  const projects = [
+    { kind: 'worker', name: 'a', status: 'healthy', requests24h: 10, errors24h: 0 },
+    { kind: 'worker', name: 'b', status: 'down', requests24h: 5, errors24h: 5 },
+    { kind: 'pages', name: 'b', status: 'healthy', requests24h: 1, errors24h: 0 },
+  ];
+  const r = applyHidden({ configured: true, projects, summary: summarize(projects) }, new Set(['worker:b']));
+  assert.equal(r.projects.length, 3);
+  assert.deepEqual(r.projects.map((p) => p.hidden), [false, true, false]);
+  assert.equal(r.summary.down, 0);
+  assert.equal(r.summary.healthy, 2);
+  assert.equal(r.summary.hidden, 1);
+  assert.equal(r.summary.requests24h, 11);
 });
 
 (async () => {

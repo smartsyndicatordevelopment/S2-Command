@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { RefreshCw, CheckCircle2, AlertTriangle, XCircle, MinusCircle, ExternalLink, Clock, Rocket } from 'lucide-react';
+import { useContext, useState } from 'react';
+import { RefreshCw, CheckCircle2, AlertTriangle, XCircle, MinusCircle, ExternalLink, Clock, Rocket, EyeOff, Eye } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
+import { AppContext } from '../context/AppContext';
 import StatCard from '../components/ui/StatCard';
 import Card from '../components/ui/Card';
 import Spinner from '../components/ui/Spinner';
@@ -26,6 +27,19 @@ function timeAgo(iso) {
   const days = Math.round(hours / 24);
   if (days < 60) return `${days} days ago`;
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const keyOf = (p) => `${p.kind}:${p.name}`;
+
+// Totals for the projects that are not hidden (the server does the same; this keeps the page right the moment you click).
+function summarize(projects) {
+  const n = (s) => projects.filter(p => p.status === s).length;
+  return {
+    active: projects.filter(p => p.status !== 'inactive').length,
+    inactive: n('inactive'), healthy: n('healthy'), degraded: n('degraded'), down: n('down'),
+    requests24h: projects.reduce((t, p) => t + (p.requests24h || 0), 0),
+    errors24h: projects.reduce((t, p) => t + (p.errors24h || 0), 0),
+  };
 }
 
 const fmtNumber = (n) => new Intl.NumberFormat('en-US').format(n || 0);
@@ -55,7 +69,24 @@ function Metric({ label, value }) {
   );
 }
 
-function ProjectCard({ p }) {
+function VisibilityButton({ p, hidden, onToggle }) {
+  const Icon = hidden ? Eye : EyeOff;
+  const verb = hidden ? 'Show' : 'Hide';
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(p, !hidden)}
+      aria-label={`${verb} ${p.name} on this page`}
+      title={`${verb} this project`}
+      className="inline-flex items-center gap-1 text-xs text-muted hover:text-white border border-border rounded px-2 py-1 transition-colors"
+    >
+      <Icon size={12} aria-hidden="true" />
+      {verb}
+    </button>
+  );
+}
+
+function ProjectCard({ p, onToggle }) {
   const answer = p.httpStatus == null ? 'No address' : p.httpStatus === 0 ? 'No answer' : `HTTP ${p.httpStatus}`;
   const speed = p.latencyMs == null ? (p.url ? 'This app' : 'n/a') : `${p.latencyMs} ms`;
   return (
@@ -79,7 +110,10 @@ function ProjectCard({ p }) {
               <p className="text-xs text-muted">No public address</p>
             )}
           </div>
-          <StatusPill status={p.status} />
+          <div className="flex flex-col items-end gap-2 flex-shrink-0">
+            <StatusPill status={p.status} />
+            <VisibilityButton p={p} hidden={false} onToggle={onToggle} />
+          </div>
         </div>
 
         {p.status !== 'healthy' && <p className="text-xs text-white" role="note">{p.reason}</p>}
@@ -108,6 +142,27 @@ export default function Projects() {
   const { data, loading, error, refetch } = useApi(forced ? '/api/projects?refresh=1' : '/api/projects');
   const onRefresh = () => (forced ? refetch() : setForced(true));
 
+  // Your hide/show choices are saved on the server; `changes` holds the ones made since the page loaded so they show at once.
+  const { isDemo } = useContext(AppContext);
+  const [changes, setChanges] = useState({});
+  const [saveError, setSaveError] = useState(null);
+  async function toggle(p, hidden) {
+    const k = keyOf(p);
+    setSaveError(null);
+    setChanges(c => ({ ...c, [k]: hidden }));
+    if (isDemo) return;
+    try {
+      const res = await fetch('/api/projects/visibility', {
+        method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: p.kind, name: p.name, hidden }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch {
+      setChanges(c => ({ ...c, [k]: !hidden }));
+      setSaveError(`Could not ${hidden ? 'hide' : 'show'} ${p.name}. Try again.`);
+    }
+  }
+
   if (loading && !data) return <Spinner label="Checking your Cloudflare projects..." />;
   if (error && !data) return <ErrorState message="Could not load your Cloudflare projects." onRetry={refetch} />;
   if (!data) return <Spinner label="Checking your Cloudflare projects..." />;
@@ -124,9 +179,12 @@ export default function Projects() {
     );
   }
 
-  const { summary } = data;
-  const active = data.projects.filter(p => p.status !== 'inactive');
-  const inactive = data.projects.filter(p => p.status === 'inactive');
+  const isHidden = (p) => changes[keyOf(p)] ?? p.hidden ?? false;
+  const hiddenList = data.projects.filter(isHidden);
+  const visible = data.projects.filter(p => !isHidden(p));
+  const summary = summarize(visible);
+  const active = visible.filter(p => p.status !== 'inactive');
+  const inactive = visible.filter(p => p.status === 'inactive');
   const attention = summary.degraded + summary.down;
   const attentionAccent = summary.down > 0 ? 'red' : summary.degraded > 0 ? 'yellow' : 'green';
 
@@ -153,6 +211,8 @@ export default function Projects() {
         </div>
       </div>
 
+      {saveError && <p className="text-xs text-red" role="alert">{saveError}</p>}
+
       {error && <p className="text-xs text-red" role="alert">The last refresh failed; showing the previous check.</p>}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -178,7 +238,7 @@ export default function Projects() {
 
       <section aria-label="Active projects">
         <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {active.map(p => <ProjectCard key={`${p.kind}:${p.name}`} p={p} />)}
+          {active.map(p => <ProjectCard key={keyOf(p)} p={p} onToggle={toggle} />)}
         </ul>
       </section>
 
@@ -190,9 +250,32 @@ export default function Projects() {
           </summary>
           <ul className="px-5 pb-4 divide-y divide-border">
             {inactive.map(p => (
-              <li key={`${p.kind}:${p.name}`} className="flex items-center justify-between gap-3 py-2 text-sm">
+              <li key={keyOf(p)} className="flex items-center justify-between gap-3 py-2 text-sm">
                 <span className="text-white">{p.name}</span>
-                <span className="text-xs text-muted">last deployed {timeAgo(p.lastDeployedAt)}</span>
+                <span className="flex items-center gap-3">
+                  <span className="text-xs text-muted">last deployed {timeAgo(p.lastDeployedAt)}</span>
+                  <VisibilityButton p={p} hidden={false} onToggle={toggle} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {hiddenList.length > 0 && (
+        <details className="bg-card border border-border rounded-lg">
+          <summary className="cursor-pointer select-none px-5 py-3 text-sm font-medium text-white">
+            Hidden projects ({hiddenList.length})
+            <span className="ml-2 text-xs font-normal text-muted">not counted in the totals above</span>
+          </summary>
+          <ul className="px-5 pb-4 divide-y divide-border">
+            {hiddenList.map(p => (
+              <li key={keyOf(p)} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <span className="flex items-center gap-2 min-w-0">
+                  <StatusPill status={p.status} />
+                  <span className="text-white truncate">{p.name}</span>
+                </span>
+                <VisibilityButton p={p} hidden onToggle={toggle} />
               </li>
             ))}
           </ul>

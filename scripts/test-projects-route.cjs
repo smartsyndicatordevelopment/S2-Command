@@ -12,9 +12,23 @@ const test = async (name, fn) => {
   try { await fn(); console.log('PASS', name); } catch (e) { failed++; console.log('FAIL', name, '\n     ', e.message); }
 };
 
+// No database here: an in-memory stand-in answers the two queries the hidden-projects list makes.
+const hiddenRows = [];
+const dbPath = require.resolve('../server/lib/db');
+require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
+  query: async (sql, params = []) => {
+    if (!/hidden_projects/.test(sql)) return { rows: [] }; // the report cache's own reads and writes: no cache here
+    if (/^SELECT/i.test(sql)) return { rows: hiddenRows.map((r) => ({ ...r })) };
+    if (/^INSERT/i.test(sql)) { if (!hiddenRows.some((r) => r.kind === params[0] && r.name === params[1])) hiddenRows.push({ kind: params[0], name: params[1] }); return { rows: [] }; }
+    if (/^DELETE/i.test(sql)) { const i = hiddenRows.findIndex((r) => r.kind === params[0] && r.name === params[1]); if (i >= 0) hiddenRows.splice(i, 1); return { rows: [] }; }
+    throw new Error('unexpected query: ' + sql);
+  },
+} };
+
 (async () => {
   const router = require('../server/routes/projects');
   const app = express();
+  app.use(express.json());
   app.use('/api', router);
   const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -49,6 +63,28 @@ const test = async (name, fn) => {
     // The test server is on 127.0.0.1, so the real address is probed normally here; just check it was classified.
     const me = first.projects.find((p) => p.name === 's2-command');
     assert.ok(me && ['healthy', 'degraded', 'down'].includes(me.status));
+  });
+  await test('hiding a project flags it, drops it from the totals, and showing it brings it back', async () => {
+    const before = first.summary;
+    const target = first.projects.find((p) => p.status === 'healthy' && p.name !== 's2-command');
+    const put = (body) => fetch(base + '/api/projects/visibility', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal((await put({ kind: target.kind, name: target.name, hidden: true })).status, 200);
+    let r = (await get('/api/projects')).json;
+    assert.equal(r.projects.find((p) => p.name === target.name).hidden, true);
+    assert.equal(r.projects.length, first.projects.length);
+    assert.equal(r.summary.healthy, before.healthy - 1);
+    assert.equal(r.summary.hidden, 1);
+    assert.equal((await put({ kind: target.kind, name: target.name, hidden: false })).status, 200);
+    r = (await get('/api/projects')).json;
+    assert.equal(r.summary.healthy, before.healthy);
+    assert.equal(r.summary.hidden, 0);
+  });
+  await test('bad visibility requests are refused', async () => {
+    const put = (body) => fetch(base + '/api/projects/visibility', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal((await put({ kind: 'worker', name: 'x' })).status, 400);
+    assert.equal((await put({ kind: 'bogus', name: 'x', hidden: true })).status, 400);
+    assert.equal((await put({ kind: 'worker', name: '', hidden: true })).status, 400);
+    assert.deepEqual(hiddenRows, []);
   });
   await test('a bad token gives a clean 502 with a helpful message, not a crash', async () => {
     process.env.CF_API_TOKEN = 'cfut_this-is-not-a-real-token-0000000000000000';

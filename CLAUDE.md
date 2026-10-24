@@ -36,7 +36,8 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
 - Digits token refresh takes a Postgres lock; never copy `digits_tokens` to a second live copy (the refresh token may rotate).
 - Health check at `/health`. Migration notes, cost ledger and cutover runbook are in `docs/`.
 - Projects page (`client/src/tabs/Projects.jsx`, `server/lib/cloudflareProjects.js`, `GET /api/projects`): health and latest status of every Worker and Pages project
-  in the Cloudflare account. Uses the **read-only** Worker secret `CF_API_TOKEN` and the var `CF_ACCOUNT_ID`; results cached 5 min in `server_cache`.
+  in the Cloudflare account. Uses the **read-only** Worker secret `CF_API_TOKEN` and the var `CF_ACCOUNT_ID`; results cached 5 min in `server_cache`. Projects can be hidden/shown from the page itself (saved in `hidden_projects`, migration 008; hidden ones leave the totals).
+- The Overview agent is hidden from the menu (code kept; see the note in `Layout.jsx` to restore it). The app opens on Projects.
   Tests: `scripts/test-projects.cjs`, `scripts/test-projects-route.cjs`, `scripts/render-test-projects.mjs` (add `--live` for the real account).
 - The Digits, ClickUp, GHL and Make.com agent pages were removed (2026-10-23); `ghl.js`, `clickup.js` and the status probes remain.
 - `scripts/wr.mjs` reads a Cloudflare token from `~/.config/s2-projects/cf-deploy-token.txt` (or `S2_CF_TOKEN_FILE`); mint a short-lived one to deploy, delete it after.
