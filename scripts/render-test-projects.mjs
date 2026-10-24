@@ -93,6 +93,34 @@ test('hidden projects leave the cards and the totals and wait in a Hidden list w
   assert.match(h, /Needs attention<\/p>[\s\S]{0,400}?>\d+</);
   noJunk(h);
 });
+const withSort = (value) => {
+  globalThis.localStorage = { getItem: () => value, setItem() {} };
+  try { return render(d); } finally { delete globalThis.localStorage; }
+};
+const cardOrder = (h) => [...h.matchAll(/<h3 class="[^"]*" title="([^"]+)"/g)].map((m) => m[1]);
+const active = d.projects.filter((x) => x.status !== 'inactive');
+test('sort: a dropdown offers every ordering, defaulting to needs attention first', () => {
+  for (const label of ['Needs attention first', 'Name (A to Z)', 'Most requests', 'Most errors', 'Recently deployed', 'Slowest to answer']) assert.ok(html.includes(label), label);
+  assert.match(html, /<option value="attention" selected/);
+  const rank = { down: 0, degraded: 1, healthy: 2 };
+  const order = cardOrder(html).map((n) => rank[d.projects.find((x) => x.name === n).status]);
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+});
+test('sort: by name is alphabetical', () => {
+  const names = cardOrder(withSort('name'));
+  assert.deepEqual(names, active.map((x) => x.name).sort((a, b) => a.localeCompare(b)));
+});
+test('sort: by requests, errors, deploy time and slowness follow the numbers', () => {
+  const nums = (value, f) => cardOrder(withSort(value)).map((n) => f(d.projects.find((x) => x.name === n)));
+  const desc = (a) => a.every((v, i) => i === 0 || v <= a[i - 1]);
+  assert.ok(desc(nums('requests', (x) => x.requests24h || 0)), 'requests');
+  assert.ok(desc(nums('errors', (x) => x.errors24h || 0)), 'errors');
+  assert.ok(desc(nums('deployed', (x) => new Date(x.lastDeployedAt || 0).getTime())), 'deployed');
+  assert.ok(desc(nums('slowest', (x) => x.latencyMs ?? -1)), 'slowest');
+});
+test('sort: an unknown saved value falls back to the default', () => {
+  assert.deepEqual(cardOrder(withSort('bogus')), cardOrder(html));
+});
 test('not configured: explains the missing token', () => {
   const h = render({ configured: false, projects: [], summary: { total: 0 }, warnings: [] });
   assert.match(h, /read-only Cloudflare token/);

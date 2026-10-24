@@ -31,6 +31,23 @@ function timeAgo(iso) {
 
 const keyOf = (p) => `${p.kind}:${p.name}`;
 
+// How the cards can be ordered. Ties always fall back to the name so the order never jumps around.
+const SEVERITY = { down: 0, degraded: 1, healthy: 2, inactive: 3 };
+const byName = (a, b) => a.name.localeCompare(b.name);
+const SORTS = {
+  attention: { label: 'Needs attention first', cmp: (a, b) => (SEVERITY[a.status] - SEVERITY[b.status]) || byName(a, b) },
+  name:      { label: 'Name (A to Z)', cmp: byName },
+  requests:  { label: 'Most requests (24h)', cmp: (a, b) => ((b.requests24h || 0) - (a.requests24h || 0)) || byName(a, b) },
+  errors:    { label: 'Most errors (24h)', cmp: (a, b) => ((b.errors24h || 0) - (a.errors24h || 0)) || byName(a, b) },
+  deployed:  { label: 'Recently deployed', cmp: (a, b) => (new Date(b.lastDeployedAt || 0) - new Date(a.lastDeployedAt || 0)) || byName(a, b) },
+  slowest:   { label: 'Slowest to answer', cmp: (a, b) => ((b.latencyMs ?? -1) - (a.latencyMs ?? -1)) || byName(a, b) },
+};
+const SORT_STORAGE_KEY = 's2:projectsSort';
+const readSort = () => {
+  try { const v = localStorage.getItem(SORT_STORAGE_KEY); if (v && SORTS[v]) return v; } catch { /* storage unavailable */ }
+  return 'attention';
+};
+
 // Totals for the projects that are not hidden (the server does the same; this keeps the page right the moment you click).
 function summarize(projects) {
   const n = (s) => projects.filter(p => p.status === s).length;
@@ -146,6 +163,11 @@ export default function Projects() {
   const { isDemo } = useContext(AppContext);
   const [changes, setChanges] = useState({});
   const [saveError, setSaveError] = useState(null);
+  const [sort, setSort] = useState(readSort);
+  function changeSort(value) {
+    setSort(value);
+    try { localStorage.setItem(SORT_STORAGE_KEY, value); } catch { /* storage unavailable */ }
+  }
   async function toggle(p, hidden) {
     const k = keyOf(p);
     setSaveError(null);
@@ -180,11 +202,11 @@ export default function Projects() {
   }
 
   const isHidden = (p) => changes[keyOf(p)] ?? p.hidden ?? false;
-  const hiddenList = data.projects.filter(isHidden);
+  const hiddenList = data.projects.filter(isHidden).sort(byName);
   const visible = data.projects.filter(p => !isHidden(p));
   const summary = summarize(visible);
-  const active = visible.filter(p => p.status !== 'inactive');
-  const inactive = visible.filter(p => p.status === 'inactive');
+  const active = visible.filter(p => p.status !== 'inactive').sort((SORTS[sort] || SORTS.attention).cmp);
+  const inactive = visible.filter(p => p.status === 'inactive').sort(byName);
   const attention = summary.degraded + summary.down;
   const attentionAccent = summary.down > 0 ? 'red' : summary.degraded > 0 ? 'yellow' : 'green';
 
@@ -200,6 +222,16 @@ export default function Projects() {
             <Clock size={12} aria-hidden="true" />
             {loading ? 'Checking...' : `Checked ${timeAgo(data.generatedAt)}`}
           </p>
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            Sort by
+            <select
+              value={sort}
+              onChange={(e) => changeSort(e.target.value)}
+              className="bg-card text-white border border-border rounded px-2 py-1.5 text-xs"
+            >
+              {Object.entries(SORTS).map(([id, o]) => <option key={id} value={id}>{o.label}</option>)}
+            </select>
+          </label>
           <button
             onClick={onRefresh}
             disabled={loading}
