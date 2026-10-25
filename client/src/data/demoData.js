@@ -436,6 +436,7 @@ const DEMO_DATA = {
   '/api/cashflow':               DEMO_CASHFLOW,
   '/api/digits/recat/preview':   DEMO_RECAT,
   '/api/projects':               DEMO_PROJECTS,
+  '/api/projects/catalog':       { generatedAt: new Date().toISOString(), projects: [], planHtml: null },
 };
 
 export function getDemoResponse(url) {

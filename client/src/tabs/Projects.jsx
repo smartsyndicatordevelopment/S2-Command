@@ -6,6 +6,7 @@ import StatCard from '../components/ui/StatCard';
 import Card from '../components/ui/Card';
 import Spinner from '../components/ui/Spinner';
 import ErrorState from '../components/ui/ErrorState';
+import AllProjects from './AllProjects';
 
 const STATUS = {
   healthy:  { label: 'Healthy',  Icon: CheckCircle2,  pill: 'bg-green-muted',  icon: 'text-green'  },
@@ -153,7 +154,7 @@ function ProjectCard({ p, onToggle }) {
   );
 }
 
-export default function Projects() {
+export function CloudflareHealth() {
   // The first refresh switches to the "refresh" URL (which also fetches); later ones refetch it.
   const [forced, setForced] = useState(false);
   const { data, loading, error, refetch } = useApi(forced ? '/api/projects?refresh=1' : '/api/projects');
@@ -313,6 +314,56 @@ export default function Projects() {
           </ul>
         </details>
       )}
+    </div>
+  );
+}
+
+const VIEWS = [
+  { id: 'all', label: 'All projects' },
+  { id: 'health', label: 'Cloudflare health' },
+];
+const VIEW_STORAGE_KEY = 's2:projectsView';
+const readView = () => {
+  try { const v = localStorage.getItem(VIEW_STORAGE_KEY); if (VIEWS.some(x => x.id === v)) return v; } catch { /* storage unavailable */ }
+  return 'all';
+};
+
+export default function Projects() {
+  const [view, setView] = useState(readView);
+  function show(id) {
+    setView(id);
+    try { localStorage.setItem(VIEW_STORAGE_KEY, id); } catch { /* storage unavailable */ }
+  }
+  function onKeyDown(e, i) {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    const next = VIEWS[(i + step + VIEWS.length) % VIEWS.length].id;
+    show(next);
+    document.getElementById(`projects-view-${next}`)?.focus();
+  }
+  return (
+    <div className="space-y-6">
+      <div role="tablist" aria-label="Projects views" className="flex gap-2 border-b border-border">
+        {VIEWS.map((v, i) => (
+          <button
+            key={v.id}
+            id={`projects-view-${v.id}`}
+            role="tab"
+            type="button"
+            aria-selected={view === v.id}
+            aria-controls={`projects-panel-${v.id}`}
+            tabIndex={view === v.id ? 0 : -1}
+            onClick={() => show(v.id)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${view === v.id ? 'text-white border-purple' : 'text-muted border-transparent hover:text-white'}`}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`projects-panel-${view}`} aria-labelledby={`projects-view-${view}`}>
+        {view === 'all' ? <AllProjects /> : <CloudflareHealth />}
+      </div>
     </div>
   );
 }

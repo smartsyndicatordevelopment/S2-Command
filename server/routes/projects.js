@@ -15,7 +15,18 @@ router.get('/projects', async (req, res) => {
   }
 });
 
-// PUT /api/projects/visibility  { kind: 'worker'|'pages', name: string, hidden: boolean }  -- hide or show one project
+// GET /api/projects/catalog  -- the folder-by-folder project list behind the "All projects" view (descriptions, links, logos, the
+// consolidation plan page). Built from Brandon's .dashboard files by scripts/build-project-catalog.mjs; signed-in users only.
+router.get('/projects/catalog', (req, res) => {
+  try {
+    res.json(require('../data/project-catalog.json'));
+  } catch (err) {
+    console.error('project catalog error:', err.message);
+    res.status(404).json({ error: 'The project catalog has not been built. Run scripts/build-project-catalog.mjs.' });
+  }
+});
+
+// PUT /api/projects/visibility { kind: 'worker'|'pages', name: string, hidden: boolean }  -- hide or show one project
 router.put('/projects/visibility', async (req, res) => {
   const { kind, name, hidden } = req.body || {};
   if (typeof hidden !== 'boolean') return res.status(400).json({ error: 'hidden must be true or false' });

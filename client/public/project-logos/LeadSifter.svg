@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 135" width="128" height="135" role="img" aria-label="Lead Sifter">
+  <g transform="translate(0.00 0.00) scale(1.0) translate(-36 -50)">
+    <circle cx="68" cy="62" r="12" fill="#0A0A0A"/><circle cx="100" cy="62" r="12" fill="#0A0A0A"/><circle cx="132" cy="62" r="12" fill="#0A0A0A"/>
+    <path d="M40 84 H160 L112 132 V148 H88 V132 Z" fill="#0A0A0A" stroke="#0A0A0A" stroke-width="8" stroke-linejoin="round"/>
+    <circle cx="100" cy="172" r="13" fill="#0A0A0A"/>
+  </g>
+</svg>

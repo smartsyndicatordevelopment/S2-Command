@@ -16,7 +16,7 @@ const esbuild = requireClient('esbuild');
 const entry = `
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import Projects from ${JSON.stringify(path.join(root, 'client/src/tabs/Projects.jsx').replace(/\\/g, '/'))};
+import { CloudflareHealth as Projects } from ${JSON.stringify(path.join(root, 'client/src/tabs/Projects.jsx').replace(/\\/g, '/'))};
 import { getDemoResponse } from ${JSON.stringify(path.join(root, 'client/src/data/demoData.js').replace(/\\/g, '/'))};
 export const render = (data, extra = {}) => { globalThis.__HOOK__ = { data, loading: false, error: null, refetch() {}, ...extra }; return renderToStaticMarkup(React.createElement(Projects)); };
 export const demo = () => getDemoResponse('/api/projects');

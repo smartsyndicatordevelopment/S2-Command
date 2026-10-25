@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Bridge to ElevenLabs">
+  <rect width="200" height="200" rx="28" fill="#0A0A0A"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M24 112h152"/>
+    <path d="M52 112V50M148 112V50"/>
+    <path d="M24 108Q52 50 100 96Q148 50 176 108"/>
+  </g>
+  <g stroke="#FFFFFF" stroke-width="3" stroke-linecap="round">
+    <path d="M72 80v32M100 96v16M128 80v32"/>
+  </g>
+  <path d="M24 128q38 18 76 0t76 0" fill="none" stroke="#5A7A65" stroke-width="6" stroke-linecap="round"/>
+  <text x="100" y="172" text-anchor="middle" font-family="Inter, -apple-system, 'Segoe UI', sans-serif"
+        font-weight="600" font-size="27" fill="#C8DDD1">ElevenLabs</text>
+</svg>
