@@ -1,3 +1,4 @@
+// CONFIDENTIAL - internal only, do not publish or ship.
 import Card from '../components/ui/Card';
 
 const TRAITS = [

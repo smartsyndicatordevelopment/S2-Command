@@ -1,3 +1,5 @@
+CONFIDENTIAL - internal only, do not publish or ship.
+
 # S2 Command: Cloudflare migration notes
 
 > **STATUS: COMPLETE (2026-10-23).** S2 Command runs on Cloudflare (Worker `s2-command`, database `s2command` on PlanetScale through

@@ -1,3 +1,5 @@
+CONFIDENTIAL - internal only, do not publish or ship.
+
 # S2 Command: Railway to Cloudflare cost ledger
 
 Estimates are frozen once approved (approved 2026-10-23) and never edited. Actuals go in the spend log beside them.

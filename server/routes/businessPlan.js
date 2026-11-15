@@ -1,3 +1,4 @@
+// CONFIDENTIAL - internal only, do not publish or ship.
 const router = require('express').Router();
 const { query } = require('../lib/db');
 

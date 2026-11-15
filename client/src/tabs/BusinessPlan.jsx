@@ -1,3 +1,4 @@
+// CONFIDENTIAL - internal only, do not publish or ship.
 import { useState } from 'react';
 import Card from '../components/ui/Card';
 import { useApi } from '../hooks/useApi';
