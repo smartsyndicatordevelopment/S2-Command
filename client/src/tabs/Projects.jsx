@@ -7,6 +7,11 @@ import Card from '../components/ui/Card';
 import Spinner from '../components/ui/Spinner';
 import ErrorState from '../components/ui/ErrorState';
 import AllProjects from './AllProjects';
+import Utilization from './Utilization';
+import {
+  ProjectLogo, FavoriteButton, TrafficButton, UsagePopover, useUsageHover, useFavorites, groupProjects, GroupSelect, SectionHeading,
+  fmtNumber, errorRate, readStored, writeStored,
+} from '../components/projects/shared';
 
 const STATUS = {
   healthy:  { label: 'Healthy',  Icon: CheckCircle2,  pill: 'bg-green-muted',  icon: 'text-green'  },
@@ -60,14 +65,6 @@ function summarize(projects) {
   };
 }
 
-const fmtNumber = (n) => new Intl.NumberFormat('en-US').format(n || 0);
-
-function errorRate(requests, errors) {
-  if (!requests) return '0%';
-  const r = (errors / requests) * 100;
-  return `${r < 10 ? r.toFixed(1) : Math.round(r)}%`;
-}
-
 function StatusPill({ status }) {
   const s = STATUS[status] || STATUS.inactive;
   return (
@@ -104,15 +101,18 @@ function VisibilityButton({ p, hidden, onToggle }) {
   );
 }
 
-function ProjectCard({ p, onToggle }) {
+function ProjectCard({ p, onToggle, favorite, onFavorite }) {
   const answer = p.httpStatus == null ? 'No address' : p.httpStatus === 0 ? 'No answer' : `HTTP ${p.httpStatus}`;
   const speed = p.latencyMs == null ? (p.url ? 'This app' : 'n/a') : `${p.latencyMs} ms`;
+  // Resting the mouse on the card (or pressing its chart button) opens the traffic and usage box.
+  const hover = useUsageHover(true);
   return (
-    <li>
+    <li ref={hover.ref} className={`relative fade-in ${hover.open ? 'z-20' : ''}`} {...hover.handlers}>
       <Card className="h-full flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-white truncate" title={p.name}>{p.name}</h3>
+          <ProjectLogo logo={p.logo} name={p.folder || p.name} />
+          <div className="min-w-0 flex-1">
+            <h4 className="text-sm font-semibold text-white truncate" title={p.name}>{p.name}</h4>
             {p.url ? (
               <a
                 href={p.url}
@@ -128,10 +128,7 @@ function ProjectCard({ p, onToggle }) {
               <p className="text-xs text-muted">No public address</p>
             )}
           </div>
-          <div className="flex flex-col items-end gap-2 flex-shrink-0">
-            <StatusPill status={p.status} />
-            <VisibilityButton p={p} hidden={false} onToggle={onToggle} />
-          </div>
+          <div className="flex-shrink-0"><StatusPill status={p.status} /></div>
         </div>
 
         {p.status !== 'healthy' && <p className="text-xs text-white" role="note">{p.reason}</p>}
@@ -143,16 +140,26 @@ function ProjectCard({ p, onToggle }) {
           <Metric label="Last deployed" value={timeAgo(p.lastDeployedAt)} />
         </dl>
 
-        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-border text-[11px] text-muted">
-          <span className="inline-flex items-center gap-1"><Rocket size={11} aria-hidden="true" />{p.kind === 'pages' ? 'Pages' : 'Worker'}{p.deployedVia ? `, deployed via ${p.deployedVia}` : ''}</span>
-          {p.triggers.map(t => (
-            <span key={t} className="rounded border border-border px-1.5 py-0.5 text-muted">{TRIGGER_LABEL[t] || t}</span>
-          ))}
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted min-w-0">
+            <span className="inline-flex items-center gap-1"><Rocket size={11} aria-hidden="true" />{p.kind === 'pages' ? 'Pages' : 'Worker'}{p.deployedVia ? `, deployed via ${p.deployedVia}` : ''}</span>
+            {p.triggers.map(t => (
+              <span key={t} className="rounded border border-border px-1.5 py-0.5 text-muted">{TRIGGER_LABEL[t] || t}</span>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <FavoriteButton name={p.name} on={favorite} onToggle={(on) => onFavorite(p, on)} />
+            <TrafficButton name={p.name} open={hover.open} onToggle={hover.toggle} />
+            <VisibilityButton p={p} hidden={false} onToggle={onToggle} />
+          </div>
         </div>
       </Card>
+      <UsagePopover kind={p.kind} name={p.name} open={hover.open} above={hover.above} />
     </li>
   );
 }
+
+const GROUP_STORAGE_KEY = 's2:projectsGroup';
 
 export function CloudflareHealth() {
   // The first refresh switches to the "refresh" URL (which also fetches); later ones refetch it.
@@ -165,6 +172,9 @@ export function CloudflareHealth() {
   const [changes, setChanges] = useState({});
   const [saveError, setSaveError] = useState(null);
   const [sort, setSort] = useState(readSort);
+  const [group, setGroup] = useState(() => readStored(GROUP_STORAGE_KEY, ['type', 'none'], 'type'));
+  const changeGroup = (value) => { setGroup(value); writeStored(GROUP_STORAGE_KEY, value); };
+  const favorites = useFavorites();
   function changeSort(value) {
     setSort(value);
     try { localStorage.setItem(SORT_STORAGE_KEY, value); } catch { /* storage unavailable */ }
@@ -193,7 +203,7 @@ export function CloudflareHealth() {
   if (data.configured === false) {
     return (
       <Card>
-        <h2 className="text-sm font-semibold text-white mb-2">Cloudflare projects</h2>
+        <h2 className="text-sm font-semibold text-white mb-2">Cloudflare Projects</h2>
         <p className="text-sm text-muted">
           This page needs a read-only Cloudflare token. Set the <code>CF_API_TOKEN</code> secret and the <code>CF_ACCOUNT_ID</code> variable on the
           Worker, then reload.
@@ -210,21 +220,25 @@ export function CloudflareHealth() {
   const inactive = visible.filter(p => p.status === 'inactive').sort(byName);
   const attention = summary.degraded + summary.down;
   const attentionAccent = summary.down > 0 ? 'red' : summary.degraded > 0 ? 'yellow' : 'green';
+  const isFav = (p) => favorites.isFavorite(p.kind, p.name, p.favorite);
+  // Favorites first, then one group per type (apps first); the Sort By choice orders the cards inside each group.
+  const sections = groupProjects(active, { types: data.types || [], group, isFav });
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-white">Cloudflare projects</h2>
+          <h2 className="text-lg font-semibold text-white">Cloudflare Projects</h2>
           <p className="text-xs text-muted mt-1">Health and latest status of every project in your Cloudflare account.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <p className="text-xs text-muted flex items-center gap-1" role="status" aria-live="polite">
             <Clock size={12} aria-hidden="true" />
             {loading ? 'Checking...' : `Checked ${timeAgo(data.generatedAt)}`}
           </p>
+          <GroupSelect value={group} onChange={changeGroup} />
           <label className="flex items-center gap-1.5 text-xs text-muted">
-            Sort by
+            Sort By
             <select
               value={sort}
               onChange={(e) => changeSort(e.target.value)}
@@ -239,12 +253,13 @@ export function CloudflareHealth() {
             className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-white border border-border rounded px-3 py-1.5 transition-colors disabled:opacity-60"
           >
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
-            Refresh now
+            Refresh Now
           </button>
         </div>
       </div>
 
       {saveError && <p className="text-xs text-red" role="alert">{saveError}</p>}
+      {favorites.error && <p className="text-xs text-red" role="alert">{favorites.error}</p>}
 
       {error && <p className="text-xs text-red" role="alert">The last refresh failed; showing the previous check.</p>}
 
@@ -269,11 +284,19 @@ export function CloudflareHealth() {
         <p className="text-xs text-yellow" role="note">Some details could not be read: {data.warnings.join('; ')}</p>
       )}
 
-      <section aria-label="Active projects">
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {active.map(p => <ProjectCard key={keyOf(p)} p={p} onToggle={toggle} />)}
-        </ul>
-      </section>
+      {sections.map(s => (
+        <section key={s.id} aria-labelledby={`cf-group-${s.id}`}>
+          <SectionHeading id={`cf-group-${s.id}`} label={s.label} count={s.items.length} />
+          <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {s.items.map(p => (
+              <ProjectCard key={keyOf(p)} p={p} onToggle={toggle} favorite={isFav(p)} onFavorite={(x, on) => favorites.toggle(x.kind, x.name, on)} />
+            ))}
+          </ul>
+        </section>
+      ))}
+      {active.length === 0 && (
+        <Card><p className="text-sm text-muted text-center">No active projects to show. Hidden and inactive projects are listed below.</p></Card>
+      )}
 
       {inactive.length > 0 && (
         <details className="bg-card border border-border rounded-lg">
@@ -318,22 +341,23 @@ export function CloudflareHealth() {
   );
 }
 
+// Cloudflare Health is the main tab: first in the row and the one the page opens on.
 const VIEWS = [
-  { id: 'all', label: 'All projects' },
-  { id: 'health', label: 'Cloudflare health' },
+  { id: 'health', label: 'Cloudflare Health', Panel: CloudflareHealth },
+  { id: 'all', label: "Brandon's Projects", Panel: AllProjects },
+  { id: 'utilization', label: 'Utilization', Panel: Utilization },
 ];
-const VIEW_STORAGE_KEY = 's2:projectsView';
-const readView = () => {
-  try { const v = localStorage.getItem(VIEW_STORAGE_KEY); if (VIEWS.some(x => x.id === v)) return v; } catch { /* storage unavailable */ }
-  return 'all';
-};
+// A new key, so a browser that remembered the old default (All projects) opens on Cloudflare Health once.
+const VIEW_STORAGE_KEY = 's2:projectsTab';
+const readView = () => readStored(VIEW_STORAGE_KEY, VIEWS.map(v => v.id), 'health');
 
 export default function Projects() {
   const [view, setView] = useState(readView);
   function show(id) {
     setView(id);
-    try { localStorage.setItem(VIEW_STORAGE_KEY, id); } catch { /* storage unavailable */ }
+    writeStored(VIEW_STORAGE_KEY, id);
   }
+  const Panel = (VIEWS.find(v => v.id === view) || VIEWS[0]).Panel;
   function onKeyDown(e, i) {
     const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
     if (!step) return;
@@ -343,7 +367,7 @@ export default function Projects() {
   }
   return (
     <div className="space-y-6">
-      <div role="tablist" aria-label="Projects views" className="flex gap-2 border-b border-border">
+      <div role="tablist" aria-label="Projects views" className="flex gap-2 border-b border-border overflow-x-auto">
         {VIEWS.map((v, i) => (
           <button
             key={v.id}
@@ -355,14 +379,14 @@ export default function Projects() {
             tabIndex={view === v.id ? 0 : -1}
             onClick={() => show(v.id)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${view === v.id ? 'text-white border-purple' : 'text-muted border-transparent hover:text-white'}`}
+            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${view === v.id ? 'text-white border-purple' : 'text-muted border-transparent hover:text-white'}`}
           >
             {v.label}
           </button>
         ))}
       </div>
       <div role="tabpanel" id={`projects-panel-${view}`} aria-labelledby={`projects-view-${view}`}>
-        {view === 'all' ? <AllProjects /> : <CloudflareHealth />}
+        <Panel />
       </div>
     </div>
   );

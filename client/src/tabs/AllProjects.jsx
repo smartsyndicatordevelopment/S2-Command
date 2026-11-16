@@ -4,18 +4,18 @@ import { useApi } from '../hooks/useApi';
 import Card from '../components/ui/Card';
 import Spinner from '../components/ui/Spinner';
 import ErrorState from '../components/ui/ErrorState';
+import {
+  ProjectLogo, FavoriteButton, TrafficButton, UsagePopover, useUsageHover, useFavorites, groupProjects, GroupSelect, SectionHeading,
+  readStored, writeStored,
+} from '../components/projects/shared';
 
 // The folder-by-folder project list (the same tiles as Brandon's Project Dashboard page): filter box, Recent / A to Z, a tile for
-// every project with its description and last-modified time, a "..." menu with the links, and the skills-and-projects plan tab.
+// every project with its logo, description and last-modified time, a star to mark favorites, groups by type (apps first), a "..."
+// menu with the links, and a traffic box for projects that run on Cloudflare.
 // The data comes from GET /api/projects/catalog (built by scripts/build-project-catalog.mjs).
 
 const SORT_KEY = 's2:allProjectsSort';
-const SECTION_KEY = 's2:allProjectsSection';
-
-function readStored(key, allowed, fallback) {
-  try { const v = localStorage.getItem(key); if (allowed.includes(v)) return v; } catch { /* storage unavailable */ }
-  return fallback;
-}
+const GROUP_KEY = 's2:allProjectsGroup';
 
 function relative(iso) {
   const span = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -51,21 +51,21 @@ function MenuItem({ href, external, disabledReason, onPick, children }) {
   );
 }
 
-function ProjectTile({ p, open, onToggle, onClose }) {
+function ProjectTile({ p, open, onToggle, onClose, favorite, onFavorite }) {
   const mainHref = p.dashCommLink || p.folderLink;
   const mainTitle = p.dashCommLink ? `Open ${p.name} in DashComm Pro` : `Open the ${p.name} folder`;
+  // Only a project with a live Cloudflare Worker has traffic to show.
+  const hover = useUsageHover(!!p.worker);
   return (
-    <li className={`relative ${open ? 'z-10' : ''}`} data-project={p.name}>
+    <li ref={hover.ref} className={`relative fade-in ${open || hover.open ? 'z-20' : ''}`} data-project={p.name} {...hover.handlers}>
       <div className="h-full bg-card border border-border rounded-lg hover:border-purple transition-colors">
         <a
           href={mainHref}
           title={mainTitle}
-          className="flex flex-col gap-2 p-4 pr-10 h-full rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple"
+          className="flex flex-col gap-2 p-4 h-full rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple"
         >
-          <span className="flex items-center gap-3">
-            <span className="flex-shrink-0 w-11 h-11 p-1 bg-white border border-border rounded-md overflow-hidden flex items-center justify-center">
-              {p.logo && <img src={`/project-logos/${encodeURIComponent(p.logo)}`} alt="" loading="lazy" className="w-full h-full object-contain" />}
-            </span>
+          <span className={`flex items-center gap-3 ${p.worker ? 'pr-24' : 'pr-16'}`}>
+            <ProjectLogo logo={p.logo} name={p.name} />
             <span className="text-sm font-semibold text-white leading-snug">{p.name}</span>
           </span>
           {p.description && <span className="text-xs text-white/80 leading-relaxed">{p.description}</span>}
@@ -75,72 +75,60 @@ function ProjectTile({ p, open, onToggle, onClose }) {
             <span className="text-xs text-purple font-mono" title={exact(p.touched)}>{relative(p.touched)}</span>
           </span>
         </a>
-        <button
-          type="button"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(p.name); }}
-          aria-label={`More options for ${p.name}`}
-          aria-haspopup="true"
-          aria-expanded={open}
-          className={`absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded border transition-colors ${open ? 'text-white bg-bg border-border' : 'text-muted border-transparent hover:text-white hover:bg-bg hover:border-border'}`}
-        >
-          <MoreHorizontal size={16} aria-hidden="true" />
-        </button>
+        <div className="absolute top-2 right-2 flex items-center gap-1">
+          {p.worker && <TrafficButton name={p.name} open={hover.open} onToggle={hover.toggle} />}
+          <FavoriteButton name={p.name} on={favorite} onToggle={(on) => onFavorite(p, on)} />
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(p.name); }}
+            aria-label={`More options for ${p.name}`}
+            aria-haspopup="true"
+            aria-expanded={open}
+            title="Links for this project"
+            className={`w-7 h-7 flex items-center justify-center rounded border transition-colors ${open ? 'text-white bg-bg border-border' : 'text-muted border-transparent hover:text-white hover:bg-bg hover:border-border'}`}
+          >
+            <MoreHorizontal size={16} aria-hidden="true" />
+          </button>
+        </div>
         {open && (
           <div
             role="menu"
             onClick={(e) => e.stopPropagation()}
-            className="absolute top-10 right-2 min-w-[190px] p-1 bg-bg border border-border rounded-lg shadow-lg"
+            className="absolute top-10 right-2 z-40 min-w-[190px] p-1 bg-bg border border-border rounded-lg shadow-lg"
           >
-            <MenuItem href={p.production} external onPick={onClose} disabledReason="No production URL set in production.txt">Visit production</MenuItem>
-            <MenuItem href={p.dev?.url} external onPick={onClose} disabledReason="No dev URL set in dev.txt">Visit dev</MenuItem>
+            <MenuItem href={p.production} external onPick={onClose} disabledReason="No production URL set in production.txt">Visit Production</MenuItem>
+            <MenuItem href={p.dev?.url} external onPick={onClose} disabledReason="No dev URL set in dev.txt">Visit Dev</MenuItem>
             {p.dev?.login && <span role="menuitem" aria-label="Dev login" className="block px-3 pb-2 text-xs text-white/80 select-all break-all">Dev login: {p.dev.login}</span>}
-            <MenuItem href={p.launchable ? `${p.folderLink}?action=run` : null} onPick={onClose} disabledReason="No launch target set in launch.txt">Launch tool</MenuItem>
-            <MenuItem href={p.dashCommLink} onPick={onClose} disabledReason="Needs DashComm Pro folder links registered on the PC that built the catalog">Open in DashComm Pro</MenuItem>
-            <MenuItem href={p.scopetaskId ? `https://app.scopetask.com/app/projects/${p.scopetaskId}` : null} external onPick={onClose} disabledReason="No ScopeTask project set in scopetask.txt">Open in ScopeTask</MenuItem>
-            <MenuItem href={p.folderLink} onPick={onClose}>Open folder</MenuItem>
+            <MenuItem href={p.launchable ? `${p.folderLink}?action=run` : null} onPick={onClose} disabledReason="No launch target set in launch.txt">Launch Tool</MenuItem>
+            <MenuItem href={p.dashCommLink} onPick={onClose} disabledReason="Needs DashComm Pro folder links registered on the PC that built the catalog">Open In DashComm Pro</MenuItem>
+            <MenuItem href={p.scopetaskId ? `https://app.scopetask.com/app/projects/${p.scopetaskId}` : null} external onPick={onClose} disabledReason="No ScopeTask project set in scopetask.txt">Open In ScopeTask</MenuItem>
+            <MenuItem href={p.folderLink} onPick={onClose}>Open Folder</MenuItem>
           </div>
         )}
       </div>
+      {p.worker && !open && <UsagePopover kind="worker" name={p.worker} title={p.name} open={hover.open} above={hover.above} />}
     </li>
-  );
-}
-
-function PlanFrame({ html }) {
-  if (!html) return <Card><p className="text-sm text-muted">The consolidation plan page was not found when the catalog was built.</p></Card>;
-  return (
-    <iframe
-      title="Skills and projects consolidation plan"
-      srcDoc={html}
-      sandbox=""
-      className="w-full rounded-lg border border-border bg-bg"
-      style={{ height: '75vh' }}
-    />
   );
 }
 
 export default function AllProjects() {
   const { data, loading, error, refetch } = useApi('/api/projects/catalog');
-  const [section, setSection] = useState(() => readStored(SECTION_KEY, ['projects', 'plan'], 'projects'));
   const [sort, setSort] = useState(() => readStored(SORT_KEY, ['recent', 'name'], 'recent'));
+  const [group, setGroup] = useState(() => readStored(GROUP_KEY, ['type', 'none'], 'type'));
   const [term, setTerm] = useState('');
   const [openMenu, setOpenMenu] = useState(null);
   const search = useRef(null);
+  const favorites = useFavorites();
 
-  function pickSection(id) {
-    setSection(id);
-    try { localStorage.setItem(SECTION_KEY, id); } catch { /* storage unavailable */ }
-  }
-  function pickSort(id) {
-    setSort(id);
-    try { localStorage.setItem(SORT_KEY, id); } catch { /* storage unavailable */ }
-  }
+  const pickSort = (id) => { setSort(id); writeStored(SORT_KEY, id); };
+  const pickGroup = (id) => { setGroup(id); writeStored(GROUP_KEY, id); };
 
   // Slash focuses the filter from anywhere on this view; Escape closes an open menu; a click elsewhere closes it too.
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') setOpenMenu(null);
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') || document.activeElement?.isContentEditable;
-      if (e.key === '/' && !typing && section === 'projects' && search.current) {
+      if (e.key === '/' && !typing && search.current) {
         e.preventDefault();
         search.current.focus();
       }
@@ -149,7 +137,7 @@ export default function AllProjects() {
     document.addEventListener('keydown', onKey);
     document.addEventListener('click', close);
     return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('click', close); };
-  }, [section]);
+  }, []);
 
   const shown = useMemo(() => {
     const projects = data?.projects || [];
@@ -165,85 +153,80 @@ export default function AllProjects() {
   if (!data) return <Spinner label="Loading your projects..." />;
 
   const total = data.projects.length;
-  const sectionBtn = (id, label) => (
-    <button
-      type="button"
-      aria-pressed={section === id}
-      onClick={() => pickSection(id)}
-      className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wider rounded border transition-colors ${section === id ? 'bg-white text-black border-white' : 'text-muted border-border hover:text-white'}`}
-    >
-      {label}
-    </button>
-  );
+  const isFav = (p) => favorites.isFavorite('folder', p.name, p.favorite);
+  const sections = groupProjects(shown, { types: data.types || [], group, isFav });
+  // Enter in the filter box opens the first tile as it appears on screen.
+  const first = sections[0]?.items[0];
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-white">Brandon&apos;s projects</h2>
-          <p className="text-xs text-muted mt-1">
-            {total} projects. Click a tile to open it in DashComm Pro (or its folder if that link is not set up). Last-modified times are from
-            {' '}{exact(data.generatedAt)}, when the list was last rebuilt.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {sectionBtn('projects', 'Projects')}
-          {sectionBtn('plan', 'Skills and projects consolidation')}
+      <div>
+        <h2 className="text-lg font-semibold text-white">Brandon&apos;s Projects</h2>
+        <p className="text-xs text-muted mt-1">
+          {total} projects. Click a tile to open it in DashComm Pro (or its folder if that link is not set up). Rest the mouse on a tile
+          that runs on Cloudflare to see its traffic. Last-modified times are from {exact(data.generatedAt)}, when the list was last rebuilt.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="relative w-full max-w-sm">
+          <span className="sr-only">Filter projects</span>
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+          <input
+            ref={search}
+            type="search"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') { setTerm(''); return; }
+              if (e.key === 'Enter' && first) window.location.href = first.dashCommLink || first.folderLink;
+            }}
+            placeholder="Filter projects... (press / to focus)"
+            autoComplete="off"
+            className="w-full bg-card text-white border border-border rounded-lg pl-9 pr-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:border-purple"
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <GroupSelect value={group} onChange={pickGroup} />
+          <div className="flex gap-2" role="group" aria-label="Sort projects">
+            {[['recent', 'Recent'], ['name', 'A To Z']].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={sort === id}
+                onClick={() => pickSort(id)}
+                title={id === 'recent' ? 'Most recently changed first, inside each group' : 'Alphabetical, inside each group'}
+                className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wider rounded border transition-colors ${sort === id ? 'bg-white text-black border-white' : 'text-muted border-border hover:text-white'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {section === 'plan' ? <PlanFrame html={data.planHtml} /> : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="relative w-full max-w-sm">
-              <span className="sr-only">Filter projects</span>
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
-              <input
-                ref={search}
-                type="search"
-                value={term}
-                onChange={(e) => setTerm(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') { setTerm(''); return; }
-                  if (e.key === 'Enter' && shown[0]) window.location.href = shown[0].dashCommLink || shown[0].folderLink;
-                }}
-                placeholder="Filter projects... (press / to focus)"
-                autoComplete="off"
-                className="w-full bg-card text-white border border-border rounded-lg pl-9 pr-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:border-purple"
-              />
-            </label>
-            <div className="flex gap-2" role="group" aria-label="Sort projects">
-              {[['recent', 'Recent'], ['name', 'A to Z']].map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={sort === id}
-                  onClick={() => pickSort(id)}
-                  className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wider rounded border transition-colors ${sort === id ? 'bg-white text-black border-white' : 'text-muted border-border hover:text-white'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+      {favorites.error && <p className="text-xs text-red" role="alert">{favorites.error}</p>}
 
-          {shown.length === 0 ? (
-            <Card><p className="text-sm text-muted text-center">No project matches that filter.</p></Card>
-          ) : (
-            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {shown.map(p => (
-                <ProjectTile
-                  key={p.name}
-                  p={p}
-                  open={openMenu === p.name}
-                  onToggle={(name) => setOpenMenu(cur => (cur === name ? null : name))}
-                  onClose={() => setOpenMenu(null)}
-                />
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+      {shown.length === 0 ? (
+        <Card><p className="text-sm text-muted text-center">{total === 0 ? 'No projects in the list yet. Run scripts/build-project-catalog.mjs to build it.' : 'No project matches that filter.'}</p></Card>
+      ) : sections.map(s => (
+        <section key={s.id} aria-labelledby={`all-group-${s.id}`}>
+          <SectionHeading id={`all-group-${s.id}`} label={s.label} count={s.items.length} />
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {s.items.map(p => (
+              <ProjectTile
+                key={p.name}
+                p={p}
+                open={openMenu === p.name}
+                onToggle={(name) => setOpenMenu(cur => (cur === name ? null : name))}
+                onClose={() => setOpenMenu(null)}
+                favorite={isFav(p)}
+                onFavorite={(x, on) => favorites.toggle('folder', x.name, on)}
+              />
+            ))}
+          </ul>
+        </section>
+      ))}
     </div>
   );
 }

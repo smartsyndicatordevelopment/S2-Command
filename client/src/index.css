@@ -106,3 +106,13 @@ code, pre, kbd, samp {
 [data-theme="light"] .recharts-polar-grid-concentric-polygon {
   stroke: var(--c-border) !important;
 }
+
+/* -- Projects page -- */
+/* Cards and the traffic box fade in (opacity and a small drift only), and stay still for people who ask for less motion. */
+@keyframes s2-fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes s2-pop-in { from { opacity: 0; } to { opacity: 1; } }
+.fade-in { animation: s2-fade-in 0.45s ease-out both; }
+.usage-pop { animation: s2-pop-in 0.18s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .fade-in, .usage-pop { animation: none; }
+}

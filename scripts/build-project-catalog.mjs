@@ -11,6 +11,7 @@
  * Options:  --root <projects folder>   --dash <.dashboard folder>
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +37,9 @@ const descriptions = Object.fromEntries(readPairs('descriptions.txt', 2).map(p =
 const production = Object.fromEntries(readPairs('production.txt', 2).filter(p => /^https?:\/\//i.test(p[1])).map(p => [p[0], p[1]]));
 const dev = Object.fromEntries(readPairs('dev.txt', 2).filter(p => /^https?:\/\//i.test(p[1])).map(p => [p[0], { url: p[1], login: p[2] || null }]));
 const launchable = new Set(readPairs('launch.txt', 3).filter(p => p[1] && p[2]).map(p => p[0]));
+// Optional: types.txt holds lines like "Name|app" to put a project in a group on the Projects page. Allowed types: app, local,
+// site, service, tool, workspace, other. A project without a line is sorted by the rules in server/lib/projectTypes.js.
+const types = Object.fromEntries(readPairs('types.txt', 2).map(p => [p[0], p[1].toLowerCase()]));
 const scopetask = Object.fromEntries(readPairs('scopetask.txt', 2).filter(p => /^[0-9a-fA-F-]{36}$/.test(p[1])).map(p => [p[0], p[1]]));
 
 // dashcomm:// links only work once DashComm Pro has registered the protocol on this PC.
@@ -71,6 +75,20 @@ if (fs.existsSync(logoSrc)) {
   }
 }
 
+// Client names must never reach this repo. The private match list (one pattern per line, outside every repo) is read here when it
+// exists; a description that matches is left blank and reported, so the tile shows no description until the text file is reworded.
+const clientList = path.join(os.homedir(), '.config', 'lead-sifter', 'client-names.txt');
+const clientPatterns = fs.existsSync(clientList)
+  ? fs.readFileSync(clientList, 'utf8').split(/\r?\n/).map(s => s.trim()).filter(s => s && !s.startsWith('#'))
+    .map(s => { try { return new RegExp(s, 'i'); } catch { return null; } }).filter(Boolean)
+  : [];
+const blanked = [];
+function safeDescription(name) {
+  const text = descriptions[name] || '';
+  if (text && clientPatterns.some(r => r.test(text))) { blanked.push(name); return ''; }
+  return text;
+}
+
 const projects = fs.readdirSync(root, { withFileTypes: true })
   .filter(e => e.isDirectory())
   .map(e => e.name)
@@ -79,26 +97,24 @@ const projects = fs.readdirSync(root, { withFileTypes: true })
     const full = path.join(root, name);
     return {
       name,
-      description: descriptions[name] || '',
+      description: safeDescription(name),
       logo: logos[name] || null,
       touched: new Date(lastTouched(full)).toISOString(),
       production: production[name] || null,
       dev: dev[name] || null,
       launchable: launchable.has(name),
       scopetaskId: scopetask[name] || null,
+      ...(types[name] ? { type: types[name] } : {}),
       folderLink: 'brandon-proj://' + encodeURIComponent(name),
       dashCommLink: dashCommLinks ? 'dashcomm://open?folder=' + encodeURIComponent(full) : null,
     };
   })
   .sort((a, b) => b.touched.localeCompare(a.touched));
 
-// The consolidation plan page: keep its own styles, drop the skip link, and let the client show it in a sandboxed frame.
-let planHtml = null;
-const planFile = path.join(dash, 'skills-and-projects-cleanup-plan.html');
-if (fs.existsSync(planFile)) planHtml = fs.readFileSync(planFile, 'utf8');
-
-const out = { generatedAt: new Date().toISOString(), projects, planHtml };
+const out = { generatedAt: new Date().toISOString(), projects };
 const outFile = path.join(appRoot, 'server', 'data', 'project-catalog.json');
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, JSON.stringify(out));
-console.log(`Wrote ${path.relative(appRoot, outFile)}: ${projects.length} projects, ${Object.keys(logos).length} logos, plan page ${planHtml ? 'included' : 'missing'}.`);
+console.log(`Wrote ${path.relative(appRoot, outFile)}: ${projects.length} projects, ${Object.keys(logos).length} logos.`);
+
+if (blanked.length) console.warn(`Left the description blank for ${blanked.length} project(s) because the text names a client: ${blanked.join(", ")}. Reword their lines in descriptions.txt.`);

@@ -29,9 +29,12 @@ async function buildOptions() {
 
   const { twoFactor, admin } = await import('better-auth/plugins');
   const { passkey } = await import('@better-auth/passkey');
+  const { APIError } = await import('@better-auth/core/error');
+  const { buildPasskeySecondStep } = require('./passkeySecondStep');
 
   const baseURL = process.env.BETTER_AUTH_URL || DEFAULT_BASE_URL;
   const rpID = new URL(baseURL).hostname;
+  const origin = new URL(baseURL).origin;
 
   const socialProviders = (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
     ? { google: { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET } }
@@ -44,6 +47,8 @@ async function buildOptions() {
     basePath: '/api/auth',
     trustedOrigins: [baseURL],
     emailAndPassword: { enabled: true },
+    // NOTE: the second sign-in step only guards password sign-in. Sign-in through Google would skip it, so do not set the
+    // Google keys on an account that relies on two-step sign-in without adding a second-step hook for social sign-in first.
     ...(socialProviders ? { socialProviders } : {}),
     databaseHooks: {
       user: {
@@ -62,7 +67,23 @@ async function buildOptions() {
     plugins: [
       twoFactor(),
       admin(),
-      passkey({ rpID, rpName: 'S2 Command', origin: baseURL }),
+      passkey({
+        rpID, rpName: 'S2 Command', origin: baseURL,
+        authentication: {
+          // "Sign in with a passkey" skips the password. When the account has two-step sign-in on, only accept it if the
+          // device itself checked the person (fingerprint, face or PIN), so a bare security key in someone's hand is not enough.
+          afterVerification: async ({ ctx, verification, clientData }) => {
+            if (verification.authenticationInfo?.userVerified) return;
+            const row = await ctx.context.adapter.findOne({ model: 'passkey', where: [{ field: 'credentialID', value: clientData.id }] });
+            const user = row ? await ctx.context.internalAdapter.findUserById(row.userId) : null;
+            if (user?.twoFactorEnabled) {
+              throw new APIError('UNAUTHORIZED', { message: 'This passkey did not confirm it is you (no fingerprint, face or PIN check). Sign in with your password instead.' });
+            }
+          },
+        },
+      }),
+      // Lets a passkey be the second step after the password (see passkeySecondStep.js).
+      await buildPasskeySecondStep({ rpID, origin }),
     ],
   };
 }
@@ -81,6 +102,8 @@ async function seedAuthCleanup() {
 function getOptions() {
   if (!optionsPromise) optionsPromise = buildOptions().catch(err => {
     console.error('better-auth options build failed:', err.message);
+    optionsPromise = null; // try again on the next request instead of staying broken until a restart
+    authPromise = null;
     return null;
   });
   return optionsPromise;

@@ -246,6 +246,12 @@ async function getProjects({ force = false, selfHost = null } = {}) {
   return { ...report, cached: false, ageSeconds: 0 };
 }
 
+/** The last saved report whatever its age, or null. Never calls Cloudflare (used where a slow re-check is not wanted). */
+async function getCachedProjects() {
+  const cached = await cache.get(CACHE_KEY);
+  return cached ? cached.data : null;
+}
+
 const key = (p) => `${p.kind}:${p.name}`;
 
 /** Names the owner chose to hide, as "kind:name" strings. */
@@ -276,4 +282,4 @@ function applyHidden(report, hiddenKeys) {
   return { ...report, projects, summary };
 }
 
-module.exports = { getProjects, getHiddenKeys, setHidden, applyHidden, buildReport, classify, pickPrimary, hostOfRoute, summarize, CloudflareError };
+module.exports = { getProjects, getHiddenKeys, setHidden, applyHidden, buildReport, classify, pickPrimary, hostOfRoute, summarize, CloudflareError, cf, getCachedProjects };

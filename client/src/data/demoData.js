@@ -408,6 +408,18 @@ const DEMO_PROJECT_LIST = [
   demoProject('old-landing-preview', null, { status: 'inactive', reason: 'No public address and no traffic in the last 24 hours', requests24h: 0, lastDeployedAt: hoursAgoIso(1500) }),
   demoProject('spike-test', null, { status: 'inactive', reason: 'No public address and no traffic in the last 24 hours', requests24h: 0, lastDeployedAt: hoursAgoIso(2200) }),
 ];
+// Types, logos and stars, as the server adds them, so grouping and favorites show in the demo.
+const DEMO_TYPES = [
+  { id: 'app', label: 'Web Apps' }, { id: 'local', label: 'Local Apps' }, { id: 'site', label: 'Websites' },
+  { id: 'service', label: 'Bridges And Services' }, { id: 'dev', label: 'Dev And Test Copies' }, { id: 'other', label: 'Other' },
+];
+const DEMO_PROJECT_TYPE = { 'acme-marketing-site': 'site', 'delta-docs': 'site', 'cedar-api': 'service', 'evergreen-sync': 'service', 'old-landing-preview': 'dev', 'spike-test': 'dev' };
+for (const p of DEMO_PROJECT_LIST) {
+  p.type = DEMO_PROJECT_TYPE[p.name] || 'app';
+  p.logo = p.name === 's2-command' ? 'S2 Command.png' : null;
+  p.folder = null;
+  p.favorite = p.name === 's2-command';
+}
 const demoCount = (st) => DEMO_PROJECT_LIST.filter((p) => p.status === st).length;
 const DEMO_PROJECTS = {
   configured: true,
@@ -423,7 +435,74 @@ const DEMO_PROJECTS = {
     errors24h: DEMO_PROJECT_LIST.reduce((n, p) => n + p.errors24h, 0),
   },
   projects: DEMO_PROJECT_LIST,
+  types: DEMO_TYPES,
   warnings: [],
+};
+
+// Made-up traffic for the box that opens when the mouse rests on a card. The same name always gives the same shape.
+export function demoUsage(name) {
+  let seed = 0;
+  for (const ch of String(name)) seed = (seed * 31 + ch.charCodeAt(0)) % 9973;
+  const wave = (i, n) => Math.max(0, Math.round((40 + (seed % 60)) * (1 + Math.sin((i + seed) / (n / 6))) + ((seed * (i + 3)) % 17)));
+  const hours = Array.from({ length: 24 }, (_, i) => ({ t: hoursAgoIso(23 - i).slice(0, 13) + ':00:00Z', requests: wave(i, 24), errors: i % 9 === 0 ? 2 : 0 }));
+  const days = Array.from({ length: 14 }, (_, i) => ({ t: hoursAgoIso((13 - i) * 24).slice(0, 10), requests: wave(i, 14) * 22, errors: i % 5 === 0 ? 9 : 1 }));
+  const requests = hours.reduce((n, h) => n + h.requests, 0);
+  const errors = hours.reduce((n, h) => n + h.errors, 0);
+  return { available: true, generatedAt: hoursAgoIso(0), hours, days, totals: { requests, errors, subrequests: requests * 3, cpuP50Ms: 4.2, cpuP99Ms: 38.5, wallP50Ms: 61 }, warnings: [] };
+}
+
+const GB = 1024 ** 3;
+const DEMO_UTILIZATION = {
+  generatedAt: hoursAgoIso(0.05),
+  cloudflare: {
+    configured: true,
+    plan: { name: null, assumed: 'Workers Paid', allowance: { requestsPerMonth: 10000000, cpuMsPerMonth: 30000000, kvBytes: GB, r2Bytes: 10 * GB, d1Bytes: 5 * GB } },
+    monthStart: new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), 1)).toISOString(),
+    month: {
+      total: { requests: 1840000, errors: 4100, subrequests: 5200000, cpuMs: 7900000 },
+      busiest: [
+        { name: 'cedar-api', requests: 910000, errors: 380, subrequests: 2100000, cpuMs: 3100000 },
+        { name: 'acme-marketing-site', requests: 402000, errors: 12, subrequests: 0, cpuMs: 610000 },
+        { name: 'summit-leads', requests: 251000, errors: 190, subrequests: 1900000, cpuMs: 2700000 },
+        { name: 'northwind-portal', requests: 143000, errors: 3120, subrequests: 700000, cpuMs: 900000 },
+      ],
+    },
+    storage: {
+      kv: { bytes: 0.04 * GB, keys: 1280, items: [{ name: 'sessions', bytes: 0.04 * GB }] },
+      r2: { bytes: 8.1 * GB, objects: 4120, items: [{ name: 'demo-media', bytes: 7.4 * GB, objects: 3100 }, { name: 'demo-backups', bytes: 0.7 * GB, objects: 1020 }] },
+      d1: { bytes: 0.2 * GB, items: [{ name: 'demo-db', bytes: 0.2 * GB }] },
+    },
+    counts: { workers: 11, pages: 0, hyperdrive: 4, kv: 1, r2: 2, d1: 1, queues: 2 },
+    warnings: [],
+  },
+  planetscale: {
+    configured: true,
+    database: { name: 'demo_app', bytes: 0.31 * GB, version: 'PostgreSQL 17.2' },
+    cluster: { databases: [{ name: 'demo_app', bytes: 0.31 * GB }, { name: 'demo_billing', bytes: 1.9 * GB }, { name: 'demo_leads', bytes: 4.4 * GB }], totalBytes: 6.61 * GB, limitBytes: 10 * GB },
+    tables: [{ name: 'chat_messages', bytes: 0.18 * GB, rows: 48200 }, { name: 'server_cache', bytes: 0.06 * GB, rows: 40 }, { name: 'sync_log', bytes: 0.03 * GB, rows: 9100 }],
+    connections: { open: 14, max: 100 },
+    api: { configured: false },
+    warnings: [],
+  },
+};
+
+const demoTile = (name, description, type, over = {}) => ({
+  name, description, logo: null, touched: hoursAgoIso(over.hours ?? 5), production: null, dev: null, launchable: false, scopetaskId: null,
+  folderLink: '#', dashCommLink: null, type, worker: null, favorite: false, ...over,
+});
+const DEMO_CATALOG = {
+  generatedAt: hoursAgoIso(1),
+  types: [...DEMO_TYPES.slice(0, 4), { id: 'workspace', label: 'Workspaces And Docs' }, { id: 'copy', label: 'Worktrees And Copies' }, { id: 'other', label: 'Other' }],
+  projects: [
+    demoTile('Summit Leads', 'Lead capture and follow-up for a demo company', 'app', { worker: 'summit-leads', favorite: true, hours: 2, production: 'https://app.summit-demo.com' }),
+    demoTile('Harbor Billing', 'Invoices and payments for a demo company', 'app', { worker: 'harbor-billing', hours: 9 }),
+    demoTile('S2 Command', 'Internal command center dashboard', 'app', { worker: 's2-command', logo: 'S2 Command.png', hours: 1 }),
+    demoTile('Desk Recorder', 'Records the screen on this computer', 'local', { hours: 40 }),
+    demoTile('Acme Marketing Site', 'Public website for a demo company', 'site', { worker: 'acme-marketing-site', hours: 120 }),
+    demoTile('Cedar Bridge', 'Shared connection to an outside service', 'service', { worker: 'cedar-api', hours: 200 }),
+    demoTile('Team Handbook', 'How-to documents', 'workspace', { hours: 300 }),
+    demoTile('Summit Leads-wt-redesign', '', 'copy', { hours: 30 }),
+  ],
 };
 
 const DEMO_DATA = {
@@ -436,7 +515,8 @@ const DEMO_DATA = {
   '/api/cashflow':               DEMO_CASHFLOW,
   '/api/digits/recat/preview':   DEMO_RECAT,
   '/api/projects':               DEMO_PROJECTS,
-  '/api/projects/catalog':       { generatedAt: new Date().toISOString(), projects: [], planHtml: null },
+  '/api/projects/catalog':       DEMO_CATALOG,
+  '/api/utilization':            DEMO_UTILIZATION,
 };
 
 export function getDemoResponse(url) {
