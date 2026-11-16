@@ -130,7 +130,8 @@ export default function Customers() {
   const [remainingHover, setRemainingHover] = useState(false);
 
   const subs = useApi('/api/subscriptions');
-  const mktg = useApi(`/api/marketing-spend?days=${cacWindow}`);
+  // Marketing spend used to come from the accounting integration, which has been removed. CAC and LTV:CAC show "--" until a new source exists.
+  const mktg = { data: { notConfigured: true }, loading: false };
 
   const renewalSort  = useSortable('days', 'asc');
   const subsSort     = useSortable('created', 'desc');
@@ -396,7 +397,7 @@ export default function Customers() {
                   ? marketingAccounts.length > 0
                     ? `How much it costs on average to acquire one new paying customer.\n${fmtMrr(spend)} marketing spend ÷ ${windowNewCustomers} new customers\nAccounts: ${marketingAccounts.join(', ')}`
                     : `How much it costs on average to acquire one new paying customer.\nNo marketing/advertising expense categories found in this window`
-                  : 'How much it costs on average to acquire one new paying customer.\nConnect Digits to calculate'}
+                  : 'How much it costs on average to acquire one new paying customer.\nMarketing spend is not tracked in this app right now'}
               </div>
             )}
           </div>
@@ -412,7 +413,7 @@ export default function Customers() {
           accent={ltvCacRatio >= 16 ? 'green' : ltvCacRatio >= 8 ? 'yellow' : ltvCacRatio > 0 ? 'red' : 'white'}
           tooltip={ltvCacRatio > 0
             ? `How many dollars of lifetime value are generated for every dollar spent acquiring a customer. Higher is better.\nLTV window: ${WINDOW_LABELS[ltvWindow]} -- CAC window: ${cacWindow === 'all' ? 'all time' : `last ${WINDOW_LABELS[cacWindow]}`}\nLTV (${fmtMrr(ltvDollars)}) ÷ CAC (${fmtMrr(cac)})`
-            : qbConfigured ? 'How many dollars of lifetime value are generated per acquisition dollar.\nRequires CAC data from Digits' : 'How many dollars of lifetime value are generated per acquisition dollar.\nConnect Digits to calculate'}
+            : qbConfigured ? 'How many dollars of lifetime value are generated per acquisition dollar.\nRequires marketing spend data' : 'How many dollars of lifetime value are generated per acquisition dollar.\nMarketing spend is not tracked in this app right now'}
           loading={subs.loading || mktg.loading}
         />
       </div>

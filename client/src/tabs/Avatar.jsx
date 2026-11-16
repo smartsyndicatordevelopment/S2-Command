@@ -5,7 +5,7 @@ const TRAITS = [
   { label: 'Experience', value: '2-10 years in multifamily or commercial real estate' },
   { label: 'Deal size', value: '$2M - $30M raises, 10-200 investor LPs' },
   { label: 'Pain point', value: 'Investor CRM chaos -- spreadsheets, email threads, no system' },
-  { label: 'Tech comfort', value: 'Low to medium -- uses GHL, ClickUp, basic SaaS tools' },
+  { label: 'Tech comfort', value: 'Low to medium -- uses basic SaaS tools' },
   { label: 'Decision speed', value: 'Fast when pain is acute -- slow when evaluating' },
   { label: 'Buying trigger', value: 'Upcoming raise, compliance concern, or referral from peer' },
   { label: 'Objection #1', value: '"I already have a system" -- usually means spreadsheets' },

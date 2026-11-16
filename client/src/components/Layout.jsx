@@ -5,7 +5,6 @@ import AnalystPanel from './AnalystPanel';
 // The Overview agent is hidden for now (kept in case a use for it comes up): to bring it back, restore this import, its nav item
 // and its TAB_COMPONENTS entry. The server side (`/api/chat`) is untouched.
 // import Overview from '../tabs/Overview';
-import Financials from '../tabs/Financials';
 import Targets from '../tabs/Targets';
 import Customers from '../tabs/Customers';
 import SalesAds from '../tabs/SalesAds';
@@ -16,8 +15,6 @@ import SalesTax from '../tabs/SalesTax';
 import Frameworks from '../tabs/Frameworks';
 import FBAds from '../tabs/FBAds';
 import Settings from '../tabs/Settings';
-import CashFlow from '../tabs/CashFlow';
-import RecategorizeIncome from '../tabs/RecategorizeIncome';
 import Projects from '../tabs/Projects';
 
 const NAV_ITEMS = [
@@ -27,10 +24,7 @@ const NAV_ITEMS = [
     id: 'financials-group',
     label: 'Financials',
     children: [
-      { id: 'cashflow', label: 'Cash Flow' },
-      { id: 'financials', label: 'Financials' },
       { id: 'customers', label: 'Recurring Customers' },
-      { id: 'recat', label: 'Re-categorize Income' },
     ],
   },
   {
@@ -58,9 +52,6 @@ const NAV_ITEMS = [
 
 const TAB_COMPONENTS = {
   projects:   Projects,
-  financials: Financials,
-  cashflow:   CashFlow,
-  recat:      RecategorizeIncome,
   targets:    Targets,
   customers:  Customers,
   sales:      SalesAds,

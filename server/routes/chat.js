@@ -3,7 +3,6 @@ const Anthropic = require('@anthropic-ai/sdk');
 const Stripe = require('stripe');
 const fetch = require('node-fetch');
 const { query } = require('../lib/db');
-const { fetchPnL: digitsFetchPnL, queryTransactions: digitsQueryTransactions } = require('./digits');
 const { readPlan: readBusinessPlan, updatePlan: updateBusinessPlan } = require('./businessPlan');
 const metricsCache = require('../lib/metricsCache');
 
@@ -155,74 +154,6 @@ async function toolGetFbCampaigns() {
   return { campaigns, total: campaigns.length, active, paused };
 }
 
-// -- GHL helpers --
-
-async function ghlGet(endpoint, queryParams) {
-  const apiKey     = process.env.GHL_API_KEY;
-  const locationId = process.env.GHL_LOCATION_ID;
-  if (!apiKey) throw new Error('GHL_API_KEY not configured');
-  // Don't auto-attach locationId when the caller supplies location_id/locationId
-  // (e.g. /opportunities/search rejects a stray locationId with 422).
-  const hasLoc = queryParams && ('location_id' in queryParams || 'locationId' in queryParams);
-  const qs = new URLSearchParams(Object.fromEntries(
-    Object.entries(hasLoc ? queryParams : { locationId, ...queryParams }).filter(([, v]) => v != null && v !== '')
-  ));
-  for (let i = 0; i < 3; i++) {
-    try {
-      const r    = await fetch(`https://services.leadconnectorhq.com${endpoint}?${qs}`, {
-        headers: { Authorization: `Bearer ${apiKey}`, Version: '2021-07-28', Accept: 'application/json' },
-      });
-      if (!r.ok && r.status !== 200) throw new Error(`GHL API ${r.status} for ${endpoint}`);
-      return r.json();
-    } catch (err) {
-      if (i === 2) throw err;
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-    }
-  }
-}
-
-async function toolGetGhlPipeline() {
-  // Serve the background-cached pipeline when available (refreshed by the sync
-  // runner); fall back to a live call on a cold cache.
-  const cached = await metricsCache.get('ghl:pipeline');
-  if (cached) return { ...cached.data, cachedAt: cached.computedAt };
-  // /opportunities/search needs location_id (snake_case), unlike most GHL endpoints.
-  const data = await ghlGet('/opportunities/search', { location_id: process.env.GHL_LOCATION_ID, limit: '100' });
-  const opps = data.opportunities || [];
-  const byStage = {};
-  let totalValue = 0;
-  for (const opp of opps) {
-    const stage = opp.pipelineStageId || 'Unknown';
-    const stageName = opp.pipelineStageName || opp.pipelineStageId || 'Unknown';
-    if (!byStage[stage]) byStage[stage] = { name: stageName, count: 0, value: 0 };
-    byStage[stage].count++;
-    byStage[stage].value += parseFloat(opp.monetaryValue || 0);
-    totalValue += parseFloat(opp.monetaryValue || 0);
-  }
-  return {
-    totalOpportunities: opps.length,
-    totalPipelineValue: totalValue,
-    byStage: Object.values(byStage).sort((a, b) => b.count - a.count),
-  };
-}
-
-async function toolGetGhlContacts() {
-  const cached = await metricsCache.get('ghl:contacts');
-  if (cached) return { ...cached.data, cachedAt: cached.computedAt };
-  // GHL's GET /contacts/ rejects a startAfterDate query with HTTP 422, and the
-  // two lookups were in one Promise.all -- so the 30-day query failing took the
-  // whole tool down. Fetch the total independently; the 30-day-new count needs
-  // the POST /contacts/search endpoint, so leave it null rather than 422.
-  let totalContacts = null;
-  try {
-    const allData = await ghlGet('/contacts/', { limit: '1' });
-    totalContacts = allData.meta?.total ?? allData.total ?? null;
-  } catch (err) {
-    console.error('toolGetGhlContacts total error:', err.message);
-  }
-  return { totalContacts, recentContacts30d: null };
-}
-
 // -- Make.com helpers --
 
 async function makeGet(endpoint, queryParams) {
@@ -263,109 +194,6 @@ async function toolGetMakeOverview() {
       lastRun:       s.lastEdit  || null,
       nextExecution: s.scheduling?.nextExecution || null,
     })),
-  };
-}
-
-// -- ClickUp helpers --
-
-async function clickupGet(endpoint) {
-  const apiKey = process.env.CLICKUP_API_KEY;
-  if (!apiKey) throw new Error('CLICKUP_API_KEY not configured');
-  for (let i = 0; i < 3; i++) {
-    try {
-      const r = await fetch(`https://api.clickup.com/api/v2${endpoint}`, {
-        headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
-      });
-      if (!r.ok) throw new Error(`ClickUp API ${r.status} for ${endpoint}`);
-      return r.json();
-    } catch (err) {
-      if (i === 2) throw err;
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-    }
-  }
-}
-
-async function clickupPost(endpoint, body) {
-  const apiKey = process.env.CLICKUP_API_KEY;
-  if (!apiKey) throw new Error('CLICKUP_API_KEY not configured');
-  for (let i = 0; i < 3; i++) {
-    try {
-      const r = await fetch(`https://api.clickup.com/api/v2${endpoint}`, {
-        method: 'POST',
-        headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(`ClickUp API ${r.status}: ${data?.err || JSON.stringify(data).slice(0, 200)}`);
-      return data;
-    } catch (err) {
-      if (i === 2) throw err;
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-    }
-  }
-}
-
-// Lists + members across the workspace, so the analyst can resolve a list_id and
-// assignee user ids before creating a task (rather than guessing).
-async function toolGetClickupWorkspace() {
-  const teamId = process.env.CLICKUP_TEAM_ID;
-  if (!teamId) throw new Error('CLICKUP_TEAM_ID not configured');
-
-  const teamData = await clickupGet('/team');
-  const team = (teamData.teams || []).find(t => String(t.id) === String(teamId)) || teamData.teams?.[0];
-  const members = (team?.members || [])
-    .map(m => ({ id: m.user?.id, username: m.user?.username, email: m.user?.email }))
-    .filter(m => m.id);
-
-  const spacesData = await clickupGet(`/team/${teamId}/space`);
-  const spaces = spacesData.spaces || [];
-  const lists = [];
-  for (const space of spaces) {
-    const [folderless, folders] = await Promise.all([
-      clickupGet(`/space/${space.id}/list`).catch(() => ({ lists: [] })),
-      clickupGet(`/space/${space.id}/folder`).catch(() => ({ folders: [] })),
-    ]);
-    for (const l of (folderless.lists || [])) lists.push({ id: l.id, name: l.name, space: space.name, folder: null });
-    for (const f of (folders.folders || [])) for (const l of (f.lists || [])) lists.push({ id: l.id, name: l.name, space: space.name, folder: f.name });
-  }
-
-  return { members, lists: lists.slice(0, 200) };
-}
-
-async function toolGetClickupTasks(overdueOnly) {
-  const teamId = process.env.CLICKUP_TEAM_ID;
-  if (!teamId) throw new Error('CLICKUP_TEAM_ID not configured');
-  const now = Date.now();
-
-  // Filtered team tasks (open only), paginated 100/page; cap pages defensively.
-  const all = [];
-  for (let page = 0; page < 5; page++) {
-    const params = new URLSearchParams({
-      include_closed: 'false',
-      subtasks:       'true',
-      order_by:       'due_date',
-      page:           String(page),
-    });
-    if (overdueOnly) params.set('due_date_lt', String(now));
-    const data  = await clickupGet(`/team/${teamId}/task?${params}`);
-    const tasks = data.tasks || [];
-    all.push(...tasks);
-    if (tasks.length < 100) break;
-  }
-
-  const tasks = all.map(t => ({
-    name:      t.name,
-    status:    t.status?.status || null,
-    dueDate:   t.due_date ? new Date(Number(t.due_date)).toLocaleDateString('en-US') : null,
-    overdue:   t.due_date ? Number(t.due_date) < now : false,
-    assignees: (t.assignees || []).map(a => a.username).filter(Boolean),
-    list:      t.list?.name || null,
-  }));
-
-  return {
-    totalOpen:    tasks.length,
-    overdueCount: tasks.filter(t => t.overdue).length,
-    tasks:        tasks.slice(0, 50),
   };
 }
 
@@ -449,39 +277,6 @@ async function toolGetYtdRevenue() {
   };
 }
 
-async function toolGetPnL({ year, start_date, end_date, interval } = {}) {
-  const today = new Date().toISOString().split('T')[0];
-  const currentYear = new Date().getFullYear();
-
-  let startDate, endDate, iv;
-  if (start_date && end_date) {
-    // Explicit period (month, quarter, custom range).
-    startDate = start_date;
-    endDate = end_date;
-    iv = interval || 'Month';
-  } else {
-    // Full calendar year (current year capped at today).
-    const y = year || currentYear;
-    startDate = `${y}-01-01`;
-    endDate = y === currentYear ? today : `${y}-12-31`;
-    iv = 'Year';
-  }
-
-  const parsed = await digitsFetchPnL({ interval: iv, startDate, endDate });
-  return { startDate, endDate, interval: iv, ...parsed };
-}
-
-async function toolGetTransactions(input = {}) {
-  const categoryTypes = input.expenses_only ? ['Expenses', 'CostOfGoodsSold', 'OtherExpenses'] : undefined;
-  return await digitsQueryTransactions({
-    startDate:     input.start_date,
-    endDate:       input.end_date,
-    categoryTypes,
-    categoryMatch: input.category_match,
-    limit:         input.limit || 100,
-  });
-}
-
 async function toolGetSalesTax(month) {
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('month must be YYYY-MM');
   const [year, mo] = month.split('-').map(Number);
@@ -554,38 +349,7 @@ async function toolGetSalesTax(month) {
 // auth so the model can only reach known systems (it supplies the path, never the
 // host). GETs are reads; POST/PUT/PATCH/DELETE are writes and are gated behind the
 // approval card before they run. This is what lets the analyst do everything the
-// dedicated GHL / ClickUp / Make / Facebook / Digits agents can do.
-
-async function ghlApi(method, endpoint, body) {
-  const apiKey = process.env.GHL_API_KEY;
-  const locationId = process.env.GHL_LOCATION_ID;
-  if (!apiKey) throw new Error('GHL_API_KEY not configured');
-  const m = method.toUpperCase();
-  let url = `https://services.leadconnectorhq.com${endpoint}`;
-  if (m === 'GET' && locationId && !/[?&]locationId=/.test(endpoint)) {
-    url += (endpoint.includes('?') ? '&' : '?') + `locationId=${encodeURIComponent(locationId)}`;
-  }
-  const opts = { method: m, headers: { Authorization: `Bearer ${apiKey}`, Version: '2021-07-28', 'Content-Type': 'application/json', Accept: 'application/json' } };
-  if (body && ['POST', 'PUT', 'PATCH'].includes(m)) {
-    if (locationId && body && typeof body === 'object' && body.locationId == null && body.location_id == null) body = { ...body, locationId };
-    opts.body = JSON.stringify(body);
-  }
-  const r = await fetch(url, opts);
-  const ct = r.headers.get('content-type') || '';
-  const data = ct.includes('application/json') ? await r.json() : { raw: await r.text() };
-  return { status: r.status, data };
-}
-
-async function clickupApi(method, endpoint, body) {
-  const apiKey = process.env.CLICKUP_API_KEY;
-  if (!apiKey) throw new Error('CLICKUP_API_KEY not configured');
-  const m = method.toUpperCase();
-  const opts = { method: m, headers: { Authorization: apiKey, 'Content-Type': 'application/json' } };
-  if (body && ['POST', 'PUT', 'PATCH'].includes(m)) opts.body = JSON.stringify(body);
-  const r = await fetch(`https://api.clickup.com/api/v2${endpoint}`, opts);
-  const data = await r.json().catch(() => ({}));
-  return { status: r.status, data };
-}
+// dedicated Make / Facebook agents can do.
 
 async function makeApi(method, endpoint, body) {
   const apiKey = process.env.MAKE_API_KEY;
@@ -615,44 +379,21 @@ async function fbApi(method, path, body) {
   return { status: r.status, data };
 }
 
-async function digitsApi(method, endpoint, body) {
-  const { getToken, getTokenCache } = require('../lib/digitsTokens');
-  const m = method.toUpperCase();
-  if (m !== 'GET' && m !== 'POST') throw new Error('Digits is read-only (GET, or POST for /v1/ledger/entries/query).');
-  const token = await getToken();
-  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' };
-  // The ledger is scoped to the connected business -- the Digits-Business-Id header
-  // is required or queries 400. Mirror the dedicated digits route's businessHeaders.
-  const businessId = process.env.DIGITS_BUSINESS_ID || getTokenCache().businessId || '';
-  if (businessId) headers['Digits-Business-Id'] = businessId;
-  const opts = { method: m, headers };
-  if (body && m === 'POST') opts.body = JSON.stringify(body);
-  const r = await fetch(`https://connect.digits.com${endpoint}`, opts);
-  const data = await r.json().catch(() => ({}));
-  return { status: r.status, data };
-}
-
 function platformApi(platform, method, endpoint, body) {
   switch (platform) {
-    case 'ghl':     return ghlApi(method, endpoint, body);
-    case 'clickup': return clickupApi(method, endpoint, body);
     case 'make':    return makeApi(method, endpoint, body);
     case 'fb':      return fbApi(method, endpoint, body);
-    case 'digits':  return digitsApi(method, endpoint, body);
     default: throw new Error(`Unknown platform: ${platform}`);
   }
 }
 
 // A tool_use block that mutates data and must be approved before it runs.
 function isAnalystWrite(b) {
-  if (b.name === 'toggle_fb_campaign' || b.name === 'create_clickup_task') return true;
+  if (b.name === 'toggle_fb_campaign') return true;
   if (b.name === 'update_business_plan') return true;
   if (b.name === 'agent_api') {
     const method = (b.input?.method || 'GET').toUpperCase();
     if (method === 'GET') return false;
-    // Digits is a read-only integration -- it uses POST only for ledger/statement
-    // queries, so a Digits POST is a read, not a write requiring approval.
-    if (b.input?.platform === 'digits') return false;
     return true;
   }
   return false;
@@ -680,35 +421,6 @@ const TOOLS = [
     name: 'get_ytd_revenue',
     description: 'Fetch year-to-date Stripe revenue from paid invoices (Jan 1 to today). Returns total dollars collected and invoice count.',
     input_schema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'get_pnl',
-    description: 'Fetch the Digits Profit & Loss statement for any period -- a single month, a quarter, a custom range, or a full year. For a specific month (e.g. "last month" / "May 2026") pass start_date and end_date for that month. For a full year pass year. Returns total income, total expenses, net income, and itemized income/expense lines for that exact period.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        start_date: { type: 'string', description: 'Period start in YYYY-MM-DD, e.g. 2026-05-01 for May 2026. Use with end_date for month/quarter/custom ranges.' },
-        end_date:   { type: 'string', description: 'Period end in YYYY-MM-DD, e.g. 2026-05-31. Use with start_date.' },
-        year:       { type: 'integer', description: 'Full calendar year, e.g. 2025 or 2026. Used only when start_date/end_date are not provided.' },
-        interval:   { type: 'string', enum: ['Year', 'Quarter', 'Month'], description: 'Granularity. Defaults to Month for a date range, Year for a full year.' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'get_transactions',
-    description: 'List individual ledger transactions from Digits accounting for a date range: date, description, vendor/counterparty, category, and amount (negative = money out). Use this for ANY request for transaction-level detail, itemized breakdowns, "show me the transactions", "what did I spend on X", "list recent transactions", or vendor-by-vendor spend. Runs immediately -- it is read-only, no approval needed. Prefer this over get_pnl when the user wants the actual line items rather than totals.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        start_date:    { type: 'string', description: 'Start date YYYY-MM-DD. Defaults to the start of last month.' },
-        end_date:      { type: 'string', description: 'End date YYYY-MM-DD (inclusive). Defaults to today.' },
-        expenses_only: { type: 'boolean', description: 'When true, only expense transactions (Expenses, CostOfGoodsSold, OtherExpenses).' },
-        category_match:{ type: 'string', description: 'Optional case-insensitive substring/regex to match against the category, description, or vendor -- e.g. "software" or "apps" to find Software & Apps spend.' },
-        limit:         { type: 'integer', description: 'Max transactions to return (default 100, max 500), most recent first.' },
-      },
-      required: [],
-    },
   },
   {
     name: 'get_sales_tax',
@@ -745,51 +457,9 @@ const TOOLS = [
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
-    name: 'get_ghl_pipeline',
-    description: 'Fetch GHL CRM pipeline data: total opportunities, pipeline value in dollars, and breakdown by stage. Use for sales pipeline, lead funnel, and deal value questions.',
-    input_schema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'get_ghl_contacts',
-    description: 'Fetch GHL CRM contact counts: total contacts in the database and how many were added in the last 30 days. Use for lead generation volume and contact growth questions.',
-    input_schema: { type: 'object', properties: {}, required: [] },
-  },
-  {
     name: 'get_make_overview',
     description: 'Fetch Make.com automation workspace overview: total scenarios, how many are active vs inactive, and scenario names with last-run times. Use for automation health and workflow questions.',
     input_schema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'get_clickup_tasks',
-    description: 'Fetch open ClickUp tasks for the workspace -- names, statuses, due dates, assignees, and lists -- plus totalOpen and overdueCount. Use for any project/task question: how many open or overdue tasks, what is due, workload by person. Pass overdue_only=true to fetch only tasks already past their due date.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        overdue_only: { type: 'boolean', description: 'When true, only return tasks past their due date.' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'get_clickup_workspace',
-    description: 'List ClickUp lists (id, name, space, folder) and team members (id, username, email). ALWAYS call this before create_clickup_task to get the exact list_id to create the task in and the user ids of any assignees -- never guess ids.',
-    input_schema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'create_clickup_task',
-    description: 'Create a new ClickUp task and optionally assign it. Requires user approval before it runs -- it returns a pending approval, so do NOT assume it executed. Call get_clickup_workspace first to resolve list_id and assignee user ids. Always include a clear preview_description naming the task, the list, and the assignee(s).',
-    input_schema: {
-      type: 'object',
-      properties: {
-        list_id:             { type: 'string', description: 'Id of the ClickUp list to create the task in (from get_clickup_workspace).' },
-        name:                { type: 'string', description: 'Task name/title.' },
-        assignee_ids:        { type: 'array', items: { type: 'number' }, description: 'ClickUp user ids to assign (from get_clickup_workspace members).' },
-        description:         { type: 'string', description: 'Optional task description / details.' },
-        due_date:            { type: 'string', description: 'Optional due date in YYYY-MM-DD.' },
-        preview_description: { type: 'string', description: 'Plain-English summary shown to Brandon for approval, e.g. "Create task \'Decom R. and J. Sebastian\' in Operations, assigned to Jes Belang".' },
-      },
-      required: ['list_id', 'name', 'preview_description'],
-    },
   },
   {
     name: 'toggle_fb_campaign',
@@ -890,14 +560,14 @@ const TOOLS = [
   },
   {
     name: 'agent_api',
-    description: 'Direct access to any connected platform API -- this lets you do ANYTHING the dedicated GHL, ClickUp, Make, Facebook Ads, and Digits agents can do, including writes. Use it for anything the specific tools above do not cover. method GET runs immediately (reads). method POST/PUT/PATCH/DELETE are WRITES: they return a pending approval card and only execute after Brandon approves -- never assume a write ran. Always include a specific preview_description for writes. Prefer the specific tools (get_pnl, get_ghl_pipeline, get_clickup_tasks, etc.) for common reads.',
+    description: 'Direct access to the Make.com and Facebook Ads APIs. Reads (GET) run immediately; any POST, PUT, PATCH or DELETE is shown to Brandon for approval first.',
     input_schema: {
       type: 'object',
       properties: {
-        platform: { type: 'string', enum: ['ghl', 'clickup', 'make', 'fb', 'digits'], description: 'Which connected system to call.' },
+        platform: { type: 'string', enum: ['make', 'fb'], description: 'Which connected system to call.' },
         method:   { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], description: 'GET = read (runs now). POST/PUT/PATCH/DELETE = write (needs approval).' },
-        endpoint: { type: 'string', description: 'API path including any query string. GHL (base services.leadconnectorhq.com): /contacts/, /contacts/{id}, /conversations/messages (POST to send SMS/email), /opportunities/search. ClickUp (api.clickup.com/api/v2): /list/{listId}/task (POST create), /task/{taskId} (PUT update, DELETE), /team/{teamId}/task. Make (v2): /scenarios, /scenarios/{id} (PATCH/DELETE). Facebook Graph: /{campaignId} (POST to update status/budget), /act_{accountId}/campaigns. Digits (connect.digits.com): /v1/ledger/statement/balance-sheet?startDate=&endDate=&interval=Year, /v1/ledger/entries/query (POST).' },
-        body:     { type: 'object', description: 'JSON body for POST/PUT/PATCH (also Digits POST queries). For the Digits ledger query (/v1/ledger/entries/query) the shape is { "filters": { "occurredAfter": "2026-06-01T00:00:00.000Z", "occurredBefore": "2026-07-01T00:00:00.000Z", "categoryTypes": ["Expenses","CostOfGoodsSold","OtherExpenses"] }, "limit": 1000 }. occurredAfter/occurredBefore are full ISO timestamps; filter the resulting entries by category name client-side (each entry is entryDetails[].entry with amount.amount in cents, category.name, counterparty.name, description).' },
+        endpoint: { type: 'string', description: 'API path including any query string, for example the Make.com path /scenarios or a Facebook Graph path.' },
+        body:     { type: 'object', description: 'JSON body for POST/PUT/PATCH.' },
         preview_description: { type: 'string', description: 'Required for writes. Plain-English summary of exactly what will change, with names/values.' },
       },
       required: ['platform', 'method', 'endpoint'],
@@ -909,24 +579,15 @@ async function executeTool(name, input) {
   switch (name) {
     case 'get_subscriptions': return await toolGetSubscriptions(input.status);
     case 'get_ytd_revenue':   return await toolGetYtdRevenue();
-    case 'get_pnl':           return await toolGetPnL(input);
-    case 'get_transactions':  return await toolGetTransactions(input);
     case 'get_sales_tax':     return await toolGetSalesTax(input.month);
     case 'get_fb_performance': return await toolGetFbPerformance(input.date_preset, input.level);
     case 'get_fb_campaigns':   return await toolGetFbCampaigns();
-    case 'get_ghl_pipeline':   return await toolGetGhlPipeline();
-    case 'get_ghl_contacts':   return await toolGetGhlContacts();
     case 'get_make_overview':  return await toolGetMakeOverview();
-    case 'get_clickup_tasks':  return await toolGetClickupTasks(input.overdue_only);
-    case 'get_clickup_workspace': return await toolGetClickupWorkspace();
     case 'get_business_plan':   return await readBusinessPlan();
     case 'agent_api': {
       // Only reads reach here -- writes are intercepted for approval before execution.
       const method = (input.method || 'GET').toUpperCase();
       if (method === 'GET') return await platformApi(input.platform, 'GET', input.endpoint, null);
-      // Digits is read-only and uses POST for ledger/statement queries -- run it
-      // inline (with its body) and return the data so it can be summarized.
-      if (input.platform === 'digits') return await platformApi('digits', 'POST', input.endpoint, input.body || {});
       throw new Error('Writes must be approved, not executed inline.');
     }
     default: throw new Error(`Unknown tool: ${name}`);
@@ -960,36 +621,23 @@ function buildSystemPrompt(ctx) {
     `- get_ytd_revenue             -- year-to-date paid invoices`,
     `- get_sales_tax(YYYY-MM)      -- Texas 8.25% liability for any month`,
     ``,
-    `Digits (accounting):`,
-    `- get_pnl(...)                -- Digits P&L for any period: pass start_date + end_date for a specific month/quarter/range (e.g. "last month"), or year for a full year`,
-    `- get_transactions(start_date, end_date, expenses_only, category_match, limit) -- itemized ledger transactions (date, vendor, category, amount). Use this whenever Brandon wants line items, "transaction level data", "recent transactions", or spend on a specific vendor/category. Read-only, runs immediately -- never route this through agent_api or an approval.`,
-    ``,
     `Facebook Ads (paid acquisition):`,
     `- get_fb_performance(date_preset, level) -- level="account" for totals, "campaign"/"adset"/"ad" for breakdowns. Returns spend, impressions, clicks, CTR, CPM, CPC, leads, cost-per-lead, ROAS per row`,
     `- get_fb_campaigns            -- all campaigns with status and budgets`,
     `- toggle_fb_campaign(campaign_id, status, preview_description) -- pause or activate a campaign. ALWAYS call get_fb_campaigns first to get the id. Returns a pending approval -- do not assume it executed.`,
     ``,
-    `GHL CRM (contacts and pipeline):`,
-    `- get_ghl_pipeline            -- opportunity count, pipeline value, breakdown by stage`,
-    `- get_ghl_contacts            -- total contact count`,
-    ``,
     `Make.com (automations):`,
     `- get_make_overview           -- scenario count, active vs inactive, last-run times`,
-    ``,
-    `ClickUp (tasks and projects):`,
-    `- get_clickup_tasks(overdue_only) -- open tasks with status, due date, assignee, list, plus totalOpen and overdueCount. Pass overdue_only=true for just-past-due tasks.`,
-    `- get_clickup_workspace        -- lists (id, name, space, folder) and team members (id, username, email)`,
-    `- create_clickup_task(list_id, name, assignee_ids, due_date, description, preview_description) -- create and assign a task. ALWAYS call get_clickup_workspace FIRST to resolve the list_id and assignee user ids by name. Returns a pending approval -- do not assume it executed. If the list or assignee is ambiguous, ask Brandon which one.`,
     ``,
     `Business Plan (the Business Plan page content):`,
     `- get_business_plan             -- read the current vision, roadmap phases, competitive moat, risk register, and CROS cost comparison`,
     `- update_business_plan(vision?, phases?, moat?, risks?, costComparison?, preview_description) -- edit the plan. ALWAYS call get_business_plan first, then pass only the section(s) you are changing. For phases/moat/risks pass the COMPLETE new array, and for costComparison the COMPLETE new object (each replaces that whole section). Returns a pending approval -- do not assume it saved.`,
     ``,
     `Anything else (orchestrator):`,
-    `- agent_api(platform, method, endpoint, body, preview_description) -- direct access to ghl, clickup, make, fb, or digits. Do anything the dedicated agents can, including writes (send SMS, create/update/delete contacts, tasks, opportunities, scenarios, campaigns). GET runs now; POST/PUT/PATCH/DELETE require Brandon's approval -- never assume a write executed. Use the specific tools above for common reads; use agent_api for everything else.`,
+    `- agent_api(platform, method, endpoint, body, preview_description) -- direct access to make or fb. Reads run now; writes need approval.`,
     ``,
     `RULE: For any question requiring accurate numbers, call the appropriate tool first. Do not guess from the snapshot above.`,
-    `RULE: For any write/change, use the right tool (create_clickup_task, toggle_fb_campaign, or agent_api) and present it for approval. Confirm the target (which contact, task, campaign, list) before proposing. Never claim a change is done until the approval has executed.`,
+    `RULE: For any write/change, use the right tool (toggle_fb_campaign or agent_api) and present it for approval. Confirm the target before proposing the change.`,
     ``,
     `== STYLE ==`,
     `Answer directly and concisely. Show calculations when doing math. No filler. Brandon is a busy founder.`,
@@ -1193,31 +841,6 @@ router.post('/chat/execute', async (req, res) => {
         if (i === 2) return res.status(502).json({ error: err.message });
         await new Promise(r => setTimeout(r, 1000 * (i + 1)));
       }
-    }
-  }
-
-  if (action.type === 'create_clickup_task') {
-    const { list_id, name, assignee_ids, description, due_date } = action;
-    if (!list_id || !name) return res.status(400).json({ error: 'list_id and name required' });
-
-    const body = { name };
-    if (Array.isArray(assignee_ids) && assignee_ids.length) body.assignees = assignee_ids;
-    if (description) body.description = description;
-    if (due_date) {
-      const ts = Date.parse(due_date);
-      if (!isNaN(ts)) { body.due_date = ts; body.due_date_time = false; }
-    }
-
-    try {
-      const data = await clickupPost(`/list/${list_id}/task`, body);
-      if (data?.id) {
-        const reply = `Task created: "${data.name}"${data.url ? ` -- ${data.url}` : ''}`;
-        await logResult(reply);
-        return res.json({ reply });
-      }
-      return res.status(400).json({ error: data?.err || 'ClickUp did not return a task id' });
-    } catch (err) {
-      return res.status(502).json({ error: `Failed to create task: ${err.message}` });
     }
   }
 

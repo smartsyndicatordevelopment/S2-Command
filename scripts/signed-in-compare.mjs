@@ -20,13 +20,9 @@ async function login(base) {
 
 const steps = [
   ['GET', '/api/auth/get-session'],
-  ['GET', '/api/ghl/email-studio/history'],
-  ['DELETE', '/api/ghl/email-studio/history/does-not-exist'],
   ['GET', '/api/integrate/systems'],
   ['GET', '/api/sessions'],
   ['GET', '/api/business-plan'],
-  ['GET', '/api/digits/recat/preview?year=2026&month=9'],
-  ['POST', '/api/digits/recat/apply', { previewId: 'pv_missing' }],
   ['POST', '/api/chat', { message: '' }],
   ['GET', '/api/does-not-exist'],
 ];

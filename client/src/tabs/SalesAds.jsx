@@ -92,7 +92,7 @@ export default function SalesAds() {
       <Card>
         <p className="text-xs font-medium uppercase tracking-widest text-muted mb-3">Notes</p>
         <p className="text-sm text-dim leading-relaxed">
-          This tab is a placeholder. To add live data, connect Meta Ads API, Google Ads API, or pipe funnel data from GHL.
+          This tab is a placeholder. To add live data, connect Meta Ads API, Google Ads API.
           Update channel metrics monthly or wire up Make.com to pull ad spend automatically.
         </p>
       </Card>

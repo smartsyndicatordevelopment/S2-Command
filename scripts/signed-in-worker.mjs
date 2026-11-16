@@ -14,7 +14,6 @@ const routes = [
   '/api/business-plan',
   '/api/status/integrations',
   '/api/integrate/systems',
-  '/api/ghl/email-studio/history',
 ];
 for (const r of routes) {
   const t0 = Date.now();

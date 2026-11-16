@@ -33,7 +33,7 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
 - Cron: every 15 minutes runs the sync engine and metrics warm-up (`server/lib/scheduledJobs.js`), only when the secret
   `JOBS_ENABLED=1` is set.
 - Rate limits, recategorize previews and Email Studio history live in Postgres (migration `007_shared_state.sql`).
-- Digits token refresh takes a Postgres lock; never copy `digits_tokens` to a second live copy (the refresh token may rotate).
+- Digits, GoHighLevel and ClickUp were removed from the app (2026-11-16). The `digits_tokens` table and the old Worker secrets (`DIGITS_*`, `GHL_*`, `CLICKUP_*`) were left in place on purpose; dropping or deleting them needs the owner's separate yes.
 - Test bed (dev copy): see `docs/test-bed.md` (`wrangler.dev.jsonc`, Worker s2-command-dev). Never deploy it without `-c wrangler.dev.jsonc`.
 - Health check at `/health`. Migration notes, cost ledger and cutover runbook are in `docs/`.
 - Projects page (`client/src/tabs/Projects.jsx`, `server/lib/cloudflareProjects.js`, `GET /api/projects`): health and latest status of every Worker and Pages project
@@ -41,7 +41,8 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
 - The Projects page has two views (saved in the browser): **All projects** (default; the folder-by-folder tiles from Brandon's Project Dashboard: filter box with `/`, Esc and Enter, Recent / A to Z, description, logo, last-modified time, the "..." menu with production, dev (and dev login), launch, DashComm Pro, ScopeTask and folder links, and the skills-and-projects consolidation plan tab) and **Cloudflare health** (the original page). The tiles come from `server/data/project-catalog.json` (served to signed-in users by `GET /api/projects/catalog`) and `client/public/project-logos/`, both built from `Brandon's Apps/.dashboard` by `node scripts/build-project-catalog.mjs`. Re-run that script on Brandon's PC after a project is added or renamed or the `.dashboard` text files change, then deploy; the modified times are a snapshot from the last run. The `brandon-proj://` and `dashcomm://` links only work on a PC where those protocols are registered.
 - The Overview agent is hidden from the menu (code kept; see the note in `Layout.jsx` to restore it). The app opens on Projects.
   Tests: `scripts/test-projects.cjs`, `scripts/test-projects-route.cjs`, `scripts/render-test-projects.mjs` (add `--live` for the real account).
-- The Digits, ClickUp, GHL and Make.com agent pages were removed (2026-10-23); `ghl.js`, `clickup.js` and the status probes remain.
+- The Digits, ClickUp, GHL and Make.com agent pages were removed (2026-10-23). On 2026-11-16 the Digits, GHL and ClickUp server code, status probes, chat tools and the Financials, Cash Flow and Re-categorize Income screens were removed too. Make.com and Facebook Ads remain.
+- MCP endpoint: `POST /mcp` (`server/routes/mcp.js`), tool `calculate_texas_sales_tax`. Off (404) until the Worker secret `MCP_API_KEY` is set; callers send `Authorization: Bearer <key>`. Smoke test: `node scripts/mcp-smoke.cjs`.
 - `scripts/wr.mjs` reads a Cloudflare token from `~/.config/s2-projects/cf-deploy-token.txt` (or `S2_CF_TOKEN_FILE`); mint a short-lived one to deploy, delete it after.
 
 ### Railway (deleted 2026-10-23)
@@ -51,31 +52,6 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
   checksum manifest, taken at the cutover moment). The leftover legacy `/data/tokens.json` on the Railway volume was not backed up
   (unused by the code).
 - `server/index.js` and `railway.toml` remain only as the Node reference entry and history.
-
-## Digits integration -- what the app can and cannot write
-
-The app connects to Digits via OAuth with scope `ledger:read source:sync`
-([server/routes/digitsOAuth.js](server/routes/digitsOAuth.js)). Know the limits before
-promising a write:
-
-- **`ledger:read`** -- read P&L, transactions, categories, parties. All the reporting
-  (Cash Flow, Software Subscriptions, Overview analyst) rides on this.
-- **`source:sync`** -- write/upsert transactions into a data source **the app owns**
-  (the "S2 Command Income Adjustments" source, `ensureS2Source` in
-  [server/routes/digits.js](server/routes/digits.js)). It is **NOT** a ledger-write
-  scope. It **cannot** edit or recategorize a transaction that belongs to another source
-  (e.g. a bank/credit-card feed like Chase Card 8119). There is no in-place edit of
-  existing ledger entries.
-- **The claude.ai "Digits" MCP connector is read-only** -- query/list/statement tools
-  only, no update tool. Do not tell the user it can recategorize; it cannot.
-
-Consequence: to "recategorize" you either (a) edit in the Digits UI (the only real fix
-for bank-fed transactions like Google Fi -> Internet & Phone), or (b) use the
-replace-and-delete workaround the income feature uses -- write corrected replacements
-into our source, then the user bulk-deletes the native originals
-([server/routes/digitsRecat.js](server/routes/digitsRecat.js)). (b) is built for Stripe
-income only (income labels + Stripe clearing/fees, no expense labels) and must NOT be
-used on bank-fed card charges -- recreating + deleting them breaks card reconciliation.
 
 ## Graphics, Icons, Logos & Video Generation
 
