@@ -181,6 +181,19 @@ app.use('/auth/login', loginLimiter);
 app.use('/auth', authRouter);
 app.use('/auth', digitsOAuthRouter); // /auth/digits and /auth/digits/callback
 
+// MCP endpoint: its own bearer-key auth (MCP_API_KEY), so it sits outside the
+// browser-session gate below. Off (404) when the key is not set.
+const mcpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests -- please wait 15 minutes' },
+  store: new PgStore('mcp'), passOnStoreError: true,
+});
+app.use('/mcp', mcpLimiter);
+app.use('/', require('./routes/mcp'));
+
 // Auth middleware for all /api routes -- better-auth sessions only (the legacy
 // shared-password path has been fully removed).
 async function requireAuth(req, res, next) {
