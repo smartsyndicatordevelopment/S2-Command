@@ -13,7 +13,7 @@ const login = await fetch(`${base}/api/auth/sign-in/email`, {
 console.log('sign-in', login.status);
 const cookie = (login.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
 const get = async (p) => { const r = await fetch(base + p, { headers: { cookie } }); return [r.status, await r.json().catch(() => null)]; };
-for (const agent of ['ghl', 'clickup', 'fb', 'overview', 'digits', 'make']) {
+for (const agent of ['fb', 'overview', 'make']) {
   const [s1, sessions] = await get(`/api/sessions/${agent}`);
   const [s2, log] = await get(`/api/sessions/${agent}/changelog`);
   let msgs = 0;

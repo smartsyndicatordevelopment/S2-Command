@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { query } = require('../lib/db');
 
-const VALID_AGENTS = new Set(['ghl', 'clickup', 'fb', 'make', 'digits', 'overview']);
+const VALID_AGENTS = new Set(['fb', 'make', 'overview']);
 
 function validateAgent(agent, res) {
   if (!VALID_AGENTS.has(agent)) {

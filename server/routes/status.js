@@ -18,7 +18,6 @@ const router = require('express').Router();
 const Stripe = require('stripe');
 const fetch = require('node-fetch');
 const db = require('../lib/db');
-const { getTokenCache } = require('../lib/digitsTokens');
 
 const PROBE_TIMEOUT_MS = 6000;
 
@@ -69,24 +68,6 @@ async function checkStripe() {
   return mk('stripe', 'Stripe', 'Billing', 'connected', `${balance.livemode ? 'Live' : 'Test'} mode -- API reachable`);
 }
 
-function checkDigits() {
-  const clientId = process.env.DIGITS_CLIENT_ID;
-  let cache = null;
-  try { cache = getTokenCache(); } catch { /* encryption key missing */ }
-
-  const hasToken = !!(cache && cache.accessToken);
-  if (!clientId && !hasToken) {
-    return mk('digits', 'Digits', 'Accounting', 'not_configured', 'DIGITS_CLIENT_ID not set -- create the Digits app and add credentials', false);
-  }
-  if (!hasToken) {
-    return mk('digits', 'Digits', 'Accounting', 'disconnected', 'OAuth not connected -- run the Digits connect flow', false);
-  }
-  if (Date.now() >= cache.expiresAt) {
-    return mk('digits', 'Digits', 'Accounting', 'degraded', 'Access token expired -- will auto-refresh on next use', false);
-  }
-  return mk('digits', 'Digits', 'Accounting', 'connected', 'OAuth token valid', false);
-}
-
 async function checkMeta() {
   const token = process.env.META_ACCESS_TOKEN;
   if (!token) {
@@ -101,26 +82,6 @@ async function checkMeta() {
     return mk('meta', 'Facebook Ads (Meta)', 'Advertising', 'degraded', `Token valid as ${data.name || data.id}, but META_AD_ACCOUNT_ID not set`);
   }
   return mk('meta', 'Facebook Ads (Meta)', 'Advertising', 'connected', `Authenticated as ${data.name || data.id}`);
-}
-
-async function checkGhl() {
-  const key = process.env.GHL_API_KEY;
-  const loc = process.env.GHL_LOCATION_ID;
-  if (!key) {
-    return mk('ghl', 'GoHighLevel', 'CRM', 'not_configured', 'GHL_API_KEY not set');
-  }
-  const qs = new URLSearchParams({ ...(loc ? { locationId: loc } : {}), limit: '1' });
-  const r = await timedFetch(`https://services.leadconnectorhq.com/contacts/?${qs}`, {
-    headers: { Authorization: `Bearer ${key}`, Version: '2021-07-28', Accept: 'application/json' },
-  });
-  if (!r.ok) {
-    return mk('ghl', 'GoHighLevel', 'CRM', 'disconnected', `API returned HTTP ${r.status}`);
-  }
-  await r.json();
-  if (!loc) {
-    return mk('ghl', 'GoHighLevel', 'CRM', 'degraded', 'API key valid, but GHL_LOCATION_ID not set');
-  }
-  return mk('ghl', 'GoHighLevel', 'CRM', 'connected', 'API key valid');
 }
 
 async function checkMake() {
@@ -139,21 +100,6 @@ async function checkMake() {
   return mk('make', 'Make.com', 'Automation', 'connected', `Zone ${zone} -- API reachable`);
 }
 
-async function checkClickUp() {
-  const key = process.env.CLICKUP_API_KEY;
-  if (!key) {
-    return mk('clickup', 'ClickUp', 'Project Management', 'not_configured', 'CLICKUP_API_KEY not set');
-  }
-  const r = await timedFetch('https://api.clickup.com/api/v2/user', {
-    headers: { Authorization: key },
-  });
-  if (!r.ok) {
-    return mk('clickup', 'ClickUp', 'Project Management', 'disconnected', `API returned HTTP ${r.status}`);
-  }
-  const data = await r.json();
-  return mk('clickup', 'ClickUp', 'Project Management', 'connected', `Authenticated as ${data.user?.username || 'user'}`);
-}
-
 function checkAnthropic() {
   if (!process.env.ANTHROPIC_API_KEY) {
     return mk('anthropic', 'Anthropic (Claude)', 'AI', 'not_configured', 'ANTHROPIC_API_KEY not set', false);
@@ -168,11 +114,8 @@ router.get('/status/integrations', async (req, res) => {
   const probes = [
     safe(checkPostgres,  mk('postgres',   'Postgres',              'Infrastructure',     'disconnected', '')),
     safe(checkStripe,    mk('stripe',     'Stripe',                'Billing',            'disconnected', '')),
-    safe(checkDigits,    mk('digits',     'Digits',                'Accounting',         'disconnected', '', false)),
     safe(checkMeta,      mk('meta',       'Facebook Ads (Meta)',   'Advertising',        'disconnected', '')),
-    safe(checkGhl,       mk('ghl',        'GoHighLevel',           'CRM',                'disconnected', '')),
     safe(checkMake,      mk('make',       'Make.com',              'Automation',         'disconnected', '')),
-    safe(checkClickUp,   mk('clickup',    'ClickUp',               'Project Management', 'disconnected', '')),
     safe(checkAnthropic, mk('anthropic',  'Anthropic (Claude)',    'AI',                 'disconnected', '', false)),
   ];
 

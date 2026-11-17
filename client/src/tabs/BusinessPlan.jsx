@@ -174,7 +174,8 @@ function fmtK(n) {
 
 export default function BusinessPlan() {
   const subs = useApi('/api/subscriptions');
-  const mktg = useApi('/api/marketing-spend');
+  // Marketing spend used to come from the accounting integration, which has been removed. CAC and LTV:CAC show "--" until a new source exists.
+  const mktg = { data: { notConfigured: true } };
   const plan = useApi('/api/business-plan');
 
   // Editable plan content -- served from the API (agent-editable), with the
@@ -226,7 +227,7 @@ export default function BusinessPlan() {
       actual: a(cac, v => fmtUsd(v)),
       tooltip: cac > 0
         ? `${fmtUsd(spend3m)} mktg spend (90 days) / ${newLast3m} new customers`
-        : qbReady ? `No Digits marketing categories found` : `Connect Digits to calculate`,
+        : `Marketing spend is not tracked in this app right now`,
     },
     {
       label: 'LTV : CAC',
@@ -240,7 +241,7 @@ export default function BusinessPlan() {
       label: 'Gross Margin',
       target: '85%+',
       actual: '79%',
-      tooltip: 'Lifetime gross margin from the books (static reference) -- live calculation needs cost-of-services categorization in Digits',
+      tooltip: 'Lifetime gross margin from the books (static reference) -- live calculation needs a cost-of-services data source',
     },
     {
       label: 'MRR vs Breakeven',
