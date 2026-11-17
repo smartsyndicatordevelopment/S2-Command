@@ -36,6 +36,10 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
+// MCP endpoint (POST /mcp): own bearer-key auth, rate limit and small body parser (routes/mcp.js). Mounted first so
+// an unauthenticated caller never reaches the 12mb parser or the session store. Off (404) until MCP_API_KEY is set.
+app.use(require('./routes/mcp'));
+
 // better-auth handler -- mounted BEFORE express.json (it reads the raw body) and
 // OUTSIDE the /api requireAuth gate (login must be reachable unauthenticated). The
 // actual handler loads async during startup; until then (or when unconfigured) this
@@ -170,19 +174,6 @@ const chatLimiter = rateLimit({
 // Unauthenticated routes
 app.use('/auth/login', loginLimiter);
 app.use('/auth', authRouter);
-
-// MCP endpoint: its own bearer-key auth (MCP_API_KEY), so it sits outside the
-// browser-session gate below. Off (404) when the key is not set.
-const mcpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many requests -- please wait 15 minutes' },
-  store: new PgStore('mcp'), passOnStoreError: true,
-});
-app.use('/mcp', mcpLimiter);
-app.use('/', require('./routes/mcp'));
 
 // Auth middleware for all /api routes -- better-auth sessions only (the legacy
 // shared-password path has been fully removed).

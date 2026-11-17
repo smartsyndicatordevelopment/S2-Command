@@ -2,11 +2,30 @@
 // Texas sales tax calculator, so a skill or any MCP client can call it.
 //
 // Auth: a bearer key in MCP_API_KEY (Worker secret / env var). The endpoint is
-// OFF (404) when the key is not set. The key is compared in constant time.
-// Mounted BEFORE the /api session gate because MCP clients have no browser login.
-const router = require('express').Router();
+// OFF (404) when the key is not set or is shorter than 32 characters. The key is
+// compared in constant time.
+// Mounted in app.js BEFORE the global body parser and the browser-session gate:
+// MCP clients have no browser login, and an unauthenticated caller must not make the
+// server parse a large body. This router has its own small parser, run after the key check.
+const express = require('express');
+const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
+const { PgStore } = require('../lib/rateLimitStore');
 const { calculateSalesTax, SalesTaxInputError } = require('../lib/salesTaxCalc');
+
+const router = express.Router();
+const MIN_KEY_LENGTH = 32;
+
+// Fails closed: if the limiter's store (Postgres) is down, requests are refused rather than unlimited.
+const mcpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests -- please wait 15 minutes' },
+  store: new PgStore('mcp'),
+  passOnStoreError: false,
+});
 
 const PROTOCOL_VERSION = '2025-03-26';
 
@@ -34,8 +53,13 @@ const TOOLS = [
   },
 ];
 
+function configuredKey() {
+  const key = process.env.MCP_API_KEY || '';
+  return key.length >= MIN_KEY_LENGTH ? key : '';
+}
+
 function keyMatches(provided) {
-  const expected = process.env.MCP_API_KEY;
+  const expected = configuredKey();
   if (!expected || !provided) return false;
   const a = crypto.createHash('sha256').update(String(provided)).digest();
   const b = crypto.createHash('sha256').update(expected).digest();
@@ -45,6 +69,8 @@ function keyMatches(provided) {
 function rpcError(id, code, message) {
   return { jsonrpc: '2.0', id: id ?? null, error: { code, message } };
 }
+
+const minimal = (t) => ({ id: t.id, date: t.date, amount: t.amount, reason: t.reason, stateSource: t.stateSource });
 
 async function callTool(name, args) {
   if (name !== 'calculate_texas_sales_tax') {
@@ -60,8 +86,9 @@ async function callTool(name, args) {
           month: result.month,
           period: result.period,
           summary: result.summary,
-          unknownTransactions: result.unknownTransactions,
-          excludedTransactions: result.excludedTransactions,
+          // Charge id, date, amount and reason only: no customer names or emails unless include_transactions is true.
+          unknownTransactions: result.unknownTransactions.map(minimal),
+          excludedTransactions: result.excludedTransactions.map(minimal),
         };
     return { result: { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: false } };
   } catch (err) {
@@ -103,21 +130,27 @@ async function handle(msg) {
   }
 }
 
-router.post('/mcp', async (req, res) => {
-  if (!process.env.MCP_API_KEY) return res.status(404).json({ error: 'Not found' });
-
+function requireKey(req, res, next) {
+  if (!configuredKey()) {
+    if (process.env.MCP_API_KEY) console.error('MCP disabled: MCP_API_KEY is shorter than ' + MIN_KEY_LENGTH + ' characters');
+    return res.status(404).json({ error: 'Not found' });
+  }
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
   if (!keyMatches(token)) {
     res.set('WWW-Authenticate', 'Bearer');
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  return next();
+}
 
+router.post('/mcp', mcpLimiter, requireKey, express.json({ limit: '32kb' }), async (req, res) => {
   try {
     const body = req.body;
+    // Batches are refused: one request would otherwise fan out into many Stripe calls and
+    // count as a single hit on the rate limit. (The newer MCP protocol versions dropped batching.)
     if (Array.isArray(body)) {
-      const out = (await Promise.all(body.map(handle))).filter(Boolean);
-      return out.length ? res.json(out) : res.status(202).end();
+      return res.status(400).json(rpcError(null, -32600, 'Batch requests are not supported. Send one request at a time.'));
     }
     const out = await handle(body);
     return out ? res.json(out) : res.status(202).end();

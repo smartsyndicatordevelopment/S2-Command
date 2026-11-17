@@ -42,7 +42,7 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
 - The Overview agent is hidden from the menu (code kept; see the note in `Layout.jsx` to restore it). The app opens on Projects.
   Tests: `scripts/test-projects.cjs`, `scripts/test-projects-route.cjs`, `scripts/render-test-projects.mjs` (add `--live` for the real account).
 - The Digits, ClickUp, GHL and Make.com agent pages were removed (2026-10-23). On 2026-11-16 the Digits, GHL and ClickUp server code, status probes, chat tools and the Financials, Cash Flow and Re-categorize Income screens were removed too. Make.com and Facebook Ads remain.
-- MCP endpoint: `POST /mcp` (`server/routes/mcp.js`), tool `calculate_texas_sales_tax`. Off (404) until the Worker secret `MCP_API_KEY` is set; callers send `Authorization: Bearer <key>`. Smoke test: `node scripts/mcp-smoke.cjs`.
+- MCP endpoint: `POST /mcp` (`server/routes/mcp.js`), tool `calculate_texas_sales_tax`. Off (404) until the Worker secret `MCP_API_KEY` is set (32 characters or longer); one request at a time (batches refused); callers send `Authorization: Bearer <key>`. Smoke test: `node scripts/mcp-smoke.cjs`.
 - `scripts/wr.mjs` reads a Cloudflare token from `~/.config/s2-projects/cf-deploy-token.txt` (or `S2_CF_TOKEN_FILE`); mint a short-lived one to deploy, delete it after.
 
 ### Railway (deleted 2026-10-23)

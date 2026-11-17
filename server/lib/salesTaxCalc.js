@@ -5,6 +5,7 @@ const Stripe = require('stripe');
 
 const TX_ZIP_PREFIXES = ['75', '76', '77', '78', '79'];
 const TX_TAX_RATE = 0.0825;
+const TX_TAX_RATE_BASIS_POINTS = 825; // 8.25% as a whole number, so the math stays in integers
 const TX_STATE_VALUES = new Set(['tx', 'texas']);
 
 let stripeClient = null;
@@ -67,7 +68,7 @@ async function listAll(fetcher) {
 class SalesTaxInputError extends Error {}
 
 function parseMonth(month) {
-  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+  if (typeof month !== 'string' || !/^\d{4}-\d{2}$/.test(month)) {
     throw new SalesTaxInputError('month required as YYYY-MM');
   }
   const [year, mo] = month.split('-').map(Number);
@@ -188,7 +189,9 @@ async function calculateSalesTax(month, { stripe } = {}) {
 
   const txRevenueCents = txTransactions.reduce((sum, t) => sum + t.amount, 0);
   const txRevenue = txRevenueCents / 100;
-  const taxDue = txRevenue * TX_TAX_RATE;
+  // Tax is worked out in whole cents and rounded once, so a filing never sees 82.50000000000001.
+  const taxDueCents = Math.round((txRevenueCents * TX_TAX_RATE_BASIS_POINTS) / 10000);
+  const taxDue = taxDueCents / 100;
 
   return {
     month,
@@ -198,8 +201,10 @@ async function calculateSalesTax(month, { stripe } = {}) {
     },
     summary: {
       txRevenue,
+      txRevenueCents,
       taxRate: TX_TAX_RATE,
       taxDue,
+      taxDueCents,
       txTransactionCount: txTransactions.length,
       otherCount: otherTransactions.length,
       unknownCount: unknownTransactions.length,

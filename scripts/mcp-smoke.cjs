@@ -3,9 +3,13 @@
 const express = require('express');
 const path = require('path');
 
-const TEST_KEY = 'smoke-test-only';
+const TEST_KEY = 'smoke-test-only-key-0123456789abcdef-xyz';
 process.env.MCP_API_KEY = TEST_KEY;
 delete process.env.STRIPE_SECRET_KEY; // proves the failure path is clean when Stripe is absent
+
+// The rate limiter normally keeps its counts in Postgres; use memory so this test needs no database.
+const storePath = require.resolve(path.join(__dirname, '..', 'server', 'lib', 'rateLimitStore'));
+require.cache[storePath] = { id: storePath, filename: storePath, loaded: true, exports: { PgStore: function MemoryStore() { return new (require('express-rate-limit').MemoryStore)(); } } };
 
 const app = express();
 app.use(express.json());
@@ -32,8 +36,12 @@ const server = app.listen(0, '127.0.0.1', async () => {
   await check('tools/list', { jsonrpc: '2.0', id: 2, method: 'tools/list' }, TEST_KEY, 200, 'calculate_texas_sales_tax');
   await check('bad month is a tool error', call('2026-13'), TEST_KEY, 200, '"isError":true');
   await check('unknown tool', { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'nope' } }, TEST_KEY, 200, '-32602');
+  await check('batch refused', [{ jsonrpc: '2.0', id: 1, method: 'ping' }], TEST_KEY, 400, 'Batch requests are not supported');
+  await check('non-string month is a tool error', { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'calculate_texas_sales_tax', arguments: { month: ['2026-10'] } } }, TEST_KEY, 200, '"isError":true');
   await check('no Stripe fails cleanly', call('2026-10'), TEST_KEY, 200, 'Failed to calculate');
 
+  process.env.MCP_API_KEY = 'too-short';
+  await check('short key disables endpoint', { jsonrpc: '2.0', id: 1, method: 'ping' }, 'too-short', 404);
   server.close();
   process.exit(failed ? 1 : 0);
 });

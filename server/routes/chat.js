@@ -5,6 +5,7 @@ const fetch = require('node-fetch');
 const { query } = require('../lib/db');
 const { readPlan: readBusinessPlan, updatePlan: updateBusinessPlan } = require('./businessPlan');
 const metricsCache = require('../lib/metricsCache');
+const { calculateSalesTax, SalesTaxInputError } = require('../lib/salesTaxCalc');
 
 const AGENT = 'overview';
 
@@ -197,19 +198,6 @@ async function toolGetMakeOverview() {
   };
 }
 
-// -- Sales tax helpers --
-
-const TX_ZIP_PREFIXES = ['75', '76', '77', '78', '79'];
-const TX_TAX_RATE = 0.0825;
-const TX_STATE_VALUES = new Set(['tx', 'texas']);
-
-function isTxState(s) { return TX_STATE_VALUES.has((s || '').toLowerCase().trim()); }
-function isTxZip(zip) {
-  if (!zip) return false;
-  return TX_ZIP_PREFIXES.includes(String(zip).trim().replace(/\D/g, '').substring(0, 2));
-}
-function hasState(s) { return !!(s || '').trim(); }
-
 // -- Tool implementations --
 
 async function toolGetSubscriptions(status = 'active') {
@@ -278,68 +266,26 @@ async function toolGetYtdRevenue() {
 }
 
 async function toolGetSalesTax(month) {
-  if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('month must be YYYY-MM');
-  const [year, mo] = month.split('-').map(Number);
-  if (mo < 1 || mo > 12) throw new Error('Invalid month');
-  const startDate = new Date(Date.UTC(year, mo - 1, 1, 6, 0, 0));
-  const endDate = new Date(Date.UTC(year, mo, 1, 5, 59, 59));
-  const startTs = Math.floor(startDate.getTime() / 1000);
-  const endTs = Math.floor(endDate.getTime() / 1000);
-
-  const charges = await listAllStripe((cursor) =>
-    stripe.charges.list({
-      created: { gte: startTs, lte: endTs }, limit: 100, expand: ['data.customer'],
-      ...(cursor && { starting_after: cursor }),
-    })
-  );
-
-  const txTransactions = [], otherTransactions = [], unknownTransactions = [];
-  for (const charge of charges) {
-    if (charge.livemode === false) continue;
-    if (charge.status !== 'succeeded' || charge.refunded) continue;
-    const customer = typeof charge.customer === 'object' ? charge.customer : null;
-    const custEmail = (charge.billing_details?.email || customer?.email || '').toLowerCase().trim();
-    if (custEmail === OWNER_EMAIL) continue; // self-purchase -- no legal consideration
-    const netAmount = charge.amount - (charge.amount_refunded || 0);
-    if (netAmount <= 0) continue;
-
-    const customerState = customer?.address?.state || '';
-    const billingState  = charge.billing_details?.address?.state || '';
-    const zip           = charge.billing_details?.address?.postal_code || '';
-    let state, stateSource;
-
-    if (hasState(customerState)) {
-      state = isTxState(customerState) ? 'TX' : 'OTHER'; stateSource = 'customer_address';
-    } else if (hasState(billingState)) {
-      state = isTxState(billingState) ? 'TX' : 'OTHER'; stateSource = 'billing_details';
-    } else if (zip) {
-      state = isTxZip(zip) ? 'TX' : 'OTHER'; stateSource = 'zip';
-    } else {
-      state = null; stateSource = 'unknown';
-    }
-
-    const txn = {
-      name: charge.billing_details?.name || customer?.name || 'Unknown',
-      amountDollars: netAmount / 100,
-      stateSource,
-    };
-    if (state === 'TX') txTransactions.push(txn);
-    else if (state === 'OTHER') otherTransactions.push(txn);
-    else unknownTransactions.push(txn);
+  // One shared calculation (lib/salesTaxCalc.js) so the chat assistant, the Sales Tax page and the MCP tool always agree.
+  let r;
+  try {
+    r = await calculateSalesTax(month);
+  } catch (err) {
+    if (err instanceof SalesTaxInputError) throw new Error(err.message);
+    throw err;
   }
-
-  const txRevenue = txTransactions.reduce((s, t) => s + t.amountDollars, 0);
+  const brief = (t) => ({ name: t.name, amountDollars: t.amount / 100, stateSource: t.stateSource });
   return {
-    month,
-    txRevenueDollars: txRevenue,
+    month: r.month,
+    txRevenueDollars: r.summary.txRevenue,
     taxRate: '8.25%',
-    taxDueDollars: txRevenue * TX_TAX_RATE,
-    txTransactionCount: txTransactions.length,
-    otherStateCount: otherTransactions.length,
-    unknownCount: unknownTransactions.length,
-    txTransactions,
-    otherTransactions,
-    unknownTransactions: unknownTransactions.map(t => ({ ...t, note: 'No state data -- may need manual review' })),
+    taxDueDollars: r.summary.taxDue,
+    txTransactionCount: r.summary.txTransactionCount,
+    otherStateCount: r.summary.otherCount,
+    unknownCount: r.summary.unknownCount,
+    txTransactions: r.txTransactions.map(brief),
+    otherTransactions: r.otherTransactions.map(brief),
+    unknownTransactions: r.unknownTransactions.map(t => ({ ...brief(t), note: 'No state data -- may need manual review' })),
   };
 }
 
