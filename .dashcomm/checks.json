@@ -1,0 +1,36 @@
+{
+  "workers": 2,
+  "requiredOs": ["linux"],
+  "steps": [
+    {
+      "id": "install-server",
+      "label": "Install server packages",
+      "command": "npm",
+      "args": ["install", "--no-audit", "--no-fund"]
+    },
+    {
+      "id": "install-client",
+      "label": "Install client packages",
+      "command": "npm",
+      "args": ["install", "--prefix", "client", "--no-audit", "--no-fund"]
+    },
+    {
+      "id": "build",
+      "label": "Build the client",
+      "command": "npm",
+      "args": ["run", "build"]
+    },
+    {
+      "id": "mcp-smoke",
+      "label": "MCP endpoint smoke test",
+      "command": "node",
+      "args": ["scripts/mcp-smoke.cjs"]
+    },
+    {
+      "id": "sales-tax-calc",
+      "label": "Sales tax calculation test",
+      "command": "node",
+      "args": ["scripts/test-sales-tax-calc.cjs"]
+    }
+  ]
+}
