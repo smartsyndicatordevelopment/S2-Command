@@ -108,17 +108,76 @@ export function useFavorites() {
   return { isFavorite, toggle, error };
 }
 
+// Groupings that only need the data every project card has (used by the Cloudflare Health view). Each returns ordered buckets
+// [{ id, label, test }]; the first matching test wins and the last bucket catches everything else.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const deployAge = (p, now) => {
+  const t = p.lastDeployedAt ? new Date(p.lastDeployedAt).getTime() : NaN;
+  return Number.isFinite(t) ? Math.max(0, now - t) : null;
+};
+const errorShare = (p) => ((p.requests24h || 0) ? (p.errors24h || 0) / p.requests24h : (p.errors24h || 0) ? 1 : 0);
+const specPct = (p) => p.specProgress?.percent;
+
+export const DATA_GROUPS = {
+  deployed: { label: 'Last Deployed', buckets: (now) => [
+    { id: 'recent', label: 'Deployed In The Last 2 Weeks', test: (p) => { const a = deployAge(p, now); return a != null && a <= 14 * DAY_MS; } },
+    { id: 'quarter', label: 'Deployed 2 Weeks To 3 Months Ago', test: (p) => { const a = deployAge(p, now); return a != null && a <= 90 * DAY_MS; } },
+    { id: 'old', label: 'Deployed More Than 3 Months Ago', test: (p) => deployAge(p, now) != null },
+    { id: 'never', label: 'No Deploy Date On Record', test: () => true },
+  ] },
+  health: { label: 'Health', buckets: () => [
+    { id: 'down', label: 'Down', test: (p) => p.status === 'down' },
+    { id: 'degraded', label: 'Degraded', test: (p) => p.status === 'degraded' },
+    { id: 'healthy', label: 'Healthy', test: () => true },
+  ] },
+  traffic: { label: 'Traffic (Requests, 24h)', buckets: () => [
+    { id: 'heavy', label: 'Heavy: 10,000 Or More Requests', test: (p) => (p.requests24h || 0) >= 10000 },
+    { id: 'moderate', label: 'Moderate: 1,000 To 9,999 Requests', test: (p) => (p.requests24h || 0) >= 1000 },
+    { id: 'light', label: 'Light: 1 To 999 Requests', test: (p) => (p.requests24h || 0) >= 1 },
+    { id: 'none', label: 'No Requests In The Last 24 Hours', test: () => true },
+  ] },
+  errors: { label: 'Error Rate (24h)', buckets: () => [
+    { id: 'high', label: 'High: 5% Or More Of Requests Fail', test: (p) => errorShare(p) >= 0.05 },
+    { id: 'some', label: 'Some Errors', test: (p) => errorShare(p) > 0 },
+    { id: 'clean', label: 'No Errors', test: () => true },
+  ] },
+  speed: { label: 'Response Speed', buckets: () => [
+    { id: 'unknown', label: 'Not Measured', test: (p) => p.latencyMs == null },
+    { id: 'slow', label: 'Slow: 1 Second Or More', test: (p) => p.latencyMs >= 1000 },
+    { id: 'medium', label: 'Medium: 300 ms To 1 Second', test: (p) => p.latencyMs >= 300 },
+    { id: 'fast', label: 'Fast: Under 300 ms', test: () => true },
+  ] },
+  spec: { label: 'Spec Complete', buckets: () => [
+    { id: 'high', label: '75% Or More Of The Spec Built', test: (p) => specPct(p) >= 75 },
+    { id: 'mid', label: '40% To 74% Built', test: (p) => specPct(p) >= 40 },
+    { id: 'low', label: 'Under 40% Built', test: (p) => specPct(p) != null },
+    { id: 'unknown', label: 'Not Measured Yet', test: () => true },
+  ] },
+};
+
 export const GROUPS = [['type', 'Type'], ['none', 'No Grouping']];
+export const HEALTH_GROUPS = [
+  ['deployed', DATA_GROUPS.deployed.label], ['health', DATA_GROUPS.health.label], ['traffic', DATA_GROUPS.traffic.label],
+  ['errors', DATA_GROUPS.errors.label], ['speed', DATA_GROUPS.speed.label], ['spec', DATA_GROUPS.spec.label],
+  ['type', 'Type'], ['none', 'No Grouping'],
+];
 
 /**
- * Splits already-sorted projects into sections: Favorites first, then one section per type in the server's order (apps first),
- * or one "All Projects" section when grouping is off. A favorite is listed once, under Favorites.
+ * Splits already-sorted projects into sections: Favorites first, then the chosen grouping, or one "All Projects" section when
+ * grouping is off. A favorite is listed once, under Favorites. `group` is 'type' (one section per type, apps first), 'none',
+ * or a key of DATA_GROUPS (sections by deploy date, health, traffic and so on). Empty sections are dropped.
  */
-export function groupProjects(items, { types = [], group = 'type', isFav }) {
+export function groupProjects(items, { types = [], group = 'type', isFav, now = Date.now() }) {
   const favorites = items.filter(isFav);
   const rest = items.filter((p) => !isFav(p));
   const sections = [];
   if (favorites.length) sections.push({ id: 'favorites', label: 'Favorites', items: favorites });
+  if (DATA_GROUPS[group]) {
+    const buckets = DATA_GROUPS[group].buckets(now).map((b) => ({ id: b.id, label: b.label, test: b.test, items: [] }));
+    for (const p of rest) (buckets.find((b) => b.test(p)) || buckets[buckets.length - 1]).items.push(p);
+    for (const b of buckets) if (b.items.length) sections.push({ id: b.id, label: b.label, items: b.items });
+    return sections;
+  }
   if (group !== 'type') {
     if (rest.length) sections.push({ id: 'all', label: favorites.length ? 'Everything Else' : 'All Projects', items: rest });
     return sections;
@@ -133,12 +192,12 @@ export function groupProjects(items, { types = [], group = 'type', isFav }) {
   return sections;
 }
 
-export function GroupSelect({ value, onChange }) {
+export function GroupSelect({ value, onChange, options = GROUPS }) {
   return (
     <label className="flex items-center gap-1.5 text-xs text-muted">
       Group By
-      <select value={value} onChange={(e) => onChange(e.target.value)} title="Put the cards into groups, apps first" className="bg-card text-white border border-border rounded px-2 py-1.5 text-xs">
-        {GROUPS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+      <select value={value} onChange={(e) => onChange(e.target.value)} title="Put the cards into groups" className="bg-card text-white border border-border rounded px-2 py-1.5 text-xs">
+        {options.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
       </select>
     </label>
   );

@@ -9,7 +9,7 @@ import ErrorState from '../components/ui/ErrorState';
 import AllProjects from './AllProjects';
 import Utilization from './Utilization';
 import {
-  ProjectLogo, FavoriteButton, TrafficButton, UsagePopover, useUsageHover, useFavorites, groupProjects, GroupSelect, SectionHeading,
+  ProjectLogo, FavoriteButton, TrafficButton, UsagePopover, useUsageHover, useFavorites, groupProjects, GroupSelect, HEALTH_GROUPS, SectionHeading,
   fmtNumber, errorRate, readStored, writeStored,
 } from '../components/projects/shared';
 
@@ -84,6 +84,39 @@ function Metric({ label, value }) {
   );
 }
 
+// How much of the app's written spec is built (from the spec-progress skill's last run).
+function SpecProgress({ progress }) {
+  if (!progress) {
+    return (
+      <div>
+        <p className="text-[10px] font-medium uppercase tracking-widest text-muted">Spec complete</p>
+        <p className="text-xs text-muted mt-0.5">Not measured yet</p>
+      </div>
+    );
+  }
+  const { percent, done, total, summary, checkedAt } = progress;
+  const detail = done != null && total != null ? `${done} of ${total} spec items built` : summary;
+  return (
+    <div title={`${summary || detail}${checkedAt ? ` (checked ${timeAgo(checkedAt)})` : ''}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[10px] font-medium uppercase tracking-widest text-muted">Spec complete</p>
+        <p className="text-sm font-semibold text-white">{percent}%</p>
+      </div>
+      <div
+        role="progressbar"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Percent of the spec that is built"
+        className="mt-1 h-1.5 w-full rounded-full bg-white/10 overflow-hidden"
+      >
+        <div className="h-full rounded-full bg-green" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="text-[11px] text-muted mt-1">{detail}{checkedAt ? `, checked ${timeAgo(checkedAt)}` : ''}</p>
+    </div>
+  );
+}
+
 function VisibilityButton({ p, hidden, onToggle }) {
   const Icon = hidden ? Eye : EyeOff;
   const verb = hidden ? 'Show' : 'Hide';
@@ -133,6 +166,8 @@ function ProjectCard({ p, onToggle, favorite, onFavorite }) {
 
         {p.status !== 'healthy' && <p className="text-xs text-white" role="note">{p.reason}</p>}
 
+        <SpecProgress progress={p.specProgress} />
+
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 mt-auto">
           <Metric label="Last check" value={`${answer}, ${speed}`} />
           <Metric label="Requests (24h)" value={fmtNumber(p.requests24h)} />
@@ -172,7 +207,7 @@ export function CloudflareHealth() {
   const [changes, setChanges] = useState({});
   const [saveError, setSaveError] = useState(null);
   const [sort, setSort] = useState(readSort);
-  const [group, setGroup] = useState(() => readStored(GROUP_STORAGE_KEY, ['type', 'none'], 'type'));
+  const [group, setGroup] = useState(() => readStored(GROUP_STORAGE_KEY, HEALTH_GROUPS.map(([id]) => id), 'deployed'));
   const changeGroup = (value) => { setGroup(value); writeStored(GROUP_STORAGE_KEY, value); };
   const favorites = useFavorites();
   function changeSort(value) {
@@ -236,7 +271,7 @@ export function CloudflareHealth() {
             <Clock size={12} aria-hidden="true" />
             {loading ? 'Checking...' : `Checked ${timeAgo(data.generatedAt)}`}
           </p>
-          <GroupSelect value={group} onChange={changeGroup} />
+          <GroupSelect value={group} onChange={changeGroup} options={HEALTH_GROUPS} />
           <label className="flex items-center gap-1.5 text-xs text-muted">
             Sort By
             <select

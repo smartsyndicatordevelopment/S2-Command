@@ -3,6 +3,7 @@ const { getProjects, getHiddenKeys, setHidden, applyHidden, getCachedProjects } 
 const { TYPES, decorateCloudflare, decorateFolders } = require('../lib/projectTypes');
 const { getFavoriteKeys, setFavorite, key } = require('../lib/projectFavorites');
 const { getProjectUsage, getUtilization } = require('../lib/cloudflareUsage');
+const { applySpecProgress } = require('../lib/specProgress');
 
 function catalogFolders() {
   try { return require('../data/project-catalog.json').projects || []; } catch { return []; }
@@ -25,7 +26,7 @@ router.get('/projects', async (req, res) => {
     // Each project also gets its type (for grouping) and its project folder's logo.
     out.projects = decorateCloudflare(out.projects, catalogFolders()).map((p) => ({ ...p, favorite: favorites.has(key(p.kind, p.name)) }));
     out.types = TYPES;
-    res.json(out);
+    res.json(applySpecProgress(out));
   } catch (err) {
     console.error('projects error:', err.message);
     res.status(502).json({ error: 'Could not read the Cloudflare account. Check the read-only Cloudflare token.' });
