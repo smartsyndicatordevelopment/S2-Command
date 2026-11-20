@@ -1,3 +1,5 @@
+CONFIDENTIAL - internal only, do not publish or ship.
+
 # Test bed (built 2026-10-24)
 
 A hosted copy to click through before anything reaches production. Demo data only, no real keys, so it cannot message, charge or read anything real.

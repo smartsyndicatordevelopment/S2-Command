@@ -17,11 +17,6 @@ const PORT = process.env.PORT || 3001;
 
 runMigrations()
   .then(async () => {
-    // Hydrate the Digits token cache from Postgres before serving requests.
-    await require('./lib/digitsTokens').init().catch(err =>
-      console.error('Digits token init failed:', err.message)
-    );
-
     // Activate better-auth if configured -- run its own (non-fatal) migrations, then
     // load the request handler. All wrapped so it can never block server startup.
     if (betterAuthConfigured()) {

@@ -34,7 +34,17 @@ export default function AccountSecurity() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
-  const flash = (m, isErr) => { setMsg(isErr ? '' : m); setErr(isErr ? m : ''); };
+  // Adding a passkey, enabling 2FA and changing a password all need a sign-in from the last 24 hours.
+  // better-auth answers "Session is not fresh" otherwise, so say what to do about it.
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+  const flash = (m, isErr) => {
+    const stale = !!isErr && /not fresh/i.test(m || '');
+    setNeedsSignIn(stale);
+    const text = stale
+      ? 'For safety, this change needs a sign-in from the last 24 hours. Sign out, sign back in, then try again.'
+      : m;
+    setMsg(isErr ? '' : text); setErr(isErr ? text : '');
+  };
 
   // ---- 2FA ----
   const [pw, setPw] = useState('');
@@ -127,7 +137,21 @@ export default function AccountSecurity() {
         <p className="text-xs font-medium uppercase tracking-widest" style={{ color: 'var(--c-muted)' }}>Account & Security</p>
         <span className="text-xs" style={{ color: 'var(--c-dim)' }}>{user?.email}</span>
       </div>
-      {(msg || err) && <p className="text-xs" style={{ color: err ? '#ef4444' : '#8b74ff' }}>{err || msg}</p>}
+      {(msg || err) && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <p className="text-xs" role={err ? 'alert' : 'status'} style={{ color: err ? '#ef4444' : '#8b74ff' }}>{err || msg}</p>
+          {needsSignIn && (
+            <button
+              onClick={async () => { await authClient.signOut(); }}
+              className="text-xs px-3 py-1.5 rounded-lg"
+              style={btn(true)}
+              title="Ends this session so you can sign in again and make the change"
+            >
+              Sign Out Now
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* 2FA */}

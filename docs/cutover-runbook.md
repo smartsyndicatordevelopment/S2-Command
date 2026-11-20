@@ -1,3 +1,5 @@
+CONFIDENTIAL - internal only, do not publish or ship.
+
 # S2 Command cutover runbook (DRAFT: timings are filled in from rehearsals)
 
 Goal: `command.smartsyndicator.com` moves from Railway to the Worker in seconds, nobody is signed out, and the way back is

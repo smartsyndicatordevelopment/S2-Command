@@ -1,3 +1,4 @@
+// CONFIDENTIAL - internal only, do not publish or ship.
 import { useApi } from '../hooks/useApi';
 import Card from '../components/ui/Card';
 import ErrorState from '../components/ui/ErrorState';

@@ -14,20 +14,15 @@ const rateLimit = require('express-rate-limit');
 const { getPool } = require('./lib/db');
 
 const authRouter = require('./routes/auth');
-const digitsOAuthRouter = require('./routes/digitsOAuth');
 const stripeRouter = require('./routes/stripe');
-const digitsRouter = require('./routes/digits');
 const salesTaxRouter = require('./routes/salesTax');
 const chatRouter     = require('./routes/chat');
-const ghlRouter        = require('./routes/ghl');
-const clickupRouter    = require('./routes/clickup');
 const fbChatRouter        = require('./routes/fbChat');
 const sessionsRouter      = require('./routes/sessions');
 const integrateRouter     = require('./routes/integrate');
 const statusRouter        = require('./routes/status');
 const businessPlanRouter  = require('./routes/businessPlan');
 const projectsRouter      = require('./routes/projects');
-const digitsRecatRouter   = require('./routes/digitsRecat');
 const { getAuth: getBetterAuth, isConfigured: betterAuthConfigured } = require('./lib/auth');
 
 const app = express();
@@ -40,6 +35,10 @@ app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
 }));
+
+// MCP endpoint (POST /mcp): own bearer-key auth, rate limit and small body parser (routes/mcp.js). Mounted first so
+// an unauthenticated caller never reaches the 12mb parser or the session store. Off (404) until MCP_API_KEY is set.
+app.use(require('./routes/mcp'));
 
 // better-auth handler -- mounted BEFORE express.json (it reads the raw body) and
 // OUTSIDE the /api requireAuth gate (login must be reachable unauthenticated). The
@@ -162,7 +161,7 @@ const apiLimiter = rateLimit({
   store: new PgStore('api'), passOnStoreError: true,
 });
 
-// Stricter limit for the chat endpoint (each request calls Anthropic + possibly Stripe/Digits)
+// Stricter limit for the chat endpoint (each request calls Anthropic + possibly Stripe)
 const chatLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 30,
@@ -173,13 +172,8 @@ const chatLimiter = rateLimit({
 });
 
 // Unauthenticated routes
-if (process.env.CF_WORKER) {
-  const digitsTokens = require('./lib/digitsTokens');
-  app.use('/auth', (req, res, next) => digitsTokens.hydrate().then(() => next(), () => next()));
-}
 app.use('/auth/login', loginLimiter);
 app.use('/auth', authRouter);
-app.use('/auth', digitsOAuthRouter); // /auth/digits and /auth/digits/callback
 
 // Auth middleware for all /api routes -- better-auth sessions only (the legacy
 // shared-password path has been fully removed).
@@ -197,32 +191,20 @@ async function requireAuth(req, res, next) {
   return res.status(401).json({ error: 'Unauthorized' });
 }
 
-// On Cloudflare each request may land on a different app copy, so refresh the Digits token cache from the database
-// (the route guards read it synchronously). The Node server hydrates once at startup instead.
-if (process.env.CF_WORKER) {
-  const digitsTokens = require('./lib/digitsTokens');
-  const hydrate = (req, res, next) => digitsTokens.hydrate().then(() => next(), () => next());
-  app.use('/api', hydrate);
-}
-
 // Apply auth and rate limiting once for all /api/* routes
 app.use('/api', requireAuth);
 app.use('/api', apiLimiter);
 app.use('/api/chat', chatLimiter); // additional limit on the Anthropic-backed endpoint
 
 app.use('/api', stripeRouter);
-app.use('/api', digitsRouter);
 app.use('/api', salesTaxRouter);
 app.use('/api', chatRouter);
-app.use('/api', ghlRouter);
-app.use('/api', clickupRouter);
 app.use('/api', fbChatRouter);
 app.use('/api', sessionsRouter);
 app.use('/api', integrateRouter);
 app.use('/api', statusRouter);
 app.use('/api', businessPlanRouter);
 app.use('/api', projectsRouter);
-app.use('/api', digitsRecatRouter);
 
 // Serve React build in production
 if (!isDev && !process.env.CF_WORKER) {

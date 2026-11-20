@@ -1,3 +1,4 @@
+// CONFIDENTIAL - internal only, do not publish or ship.
 import { useState, useEffect } from 'react';
 import { 
   BookOpen, HelpCircle, FileText, ShieldAlert, Target, Award, Compass, 
@@ -192,6 +193,7 @@ export default function Frameworks() {
   const totalScore = Object.values(assessment).reduce((a, b) => a + b, 0);
   const scorePct = Math.round((totalScore / 25) * 100);
 
+  // PRIVATE: proprietary rule. Never describe in user-facing text (Private By Default SOP).
   const getMaturityTier = (score) => {
     if (score <= 12) return { label: 'Scattered Activity', color: 'text-red bg-red/10 border-red/20', desc: 'Your capital raising relies heavily on spreadsheets, random outreach, and manual memory. Risk of lead leakage and inconsistent pipeline flow is very high.' };
     if (score <= 19) return { label: 'Emerging System', color: 'text-yellow bg-yellow/10 border-yellow/20', desc: 'You have some foundational tools and marketing pieces, but they lack consistent automation and unified training. Pipeline flows, but with leaks.' };

@@ -33,7 +33,7 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
 - Cron: every 15 minutes runs the sync engine and metrics warm-up (`server/lib/scheduledJobs.js`), only when the secret
   `JOBS_ENABLED=1` is set.
 - Rate limits, recategorize previews and Email Studio history live in Postgres (migration `007_shared_state.sql`).
-- Digits token refresh takes a Postgres lock; never copy `digits_tokens` to a second live copy (the refresh token may rotate).
+- Digits, GoHighLevel and ClickUp were removed from the app (2026-11-16). The `digits_tokens` table and the old Worker secrets (`DIGITS_*`, `GHL_*`, `CLICKUP_*`) were left in place on purpose; dropping or deleting them needs the owner's separate yes.
 - Test bed (dev copy): see `docs/test-bed.md` (`wrangler.dev.jsonc`, Worker s2-command-dev). Never deploy it without `-c wrangler.dev.jsonc`.
 - Health check at `/health`. Migration notes, cost ledger and cutover runbook are in `docs/`.
 - Projects page (`client/src/tabs/Projects.jsx`, `server/lib/cloudflareProjects.js`, `GET /api/projects`): health and latest status of every Worker and Pages project
@@ -45,8 +45,10 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
   - Types and the worker-to-folder match live in `server/lib/projectTypes.js` (lists plus name rules; `.dashboard/types.txt` lines "Name|type" override a folder's type). Stars are saved in `project_favorites` (migration 009; kind is worker, pages or folder).
 - Sign-in: email and password through better-auth, with optional two-step sign-in. The second step can be a passkey (`server/lib/passkeySecondStep.js`, a small better-auth plugin: `/api/auth/passkey-2fa/*`), an authenticator-app code, or a one-time backup code. Turning it on with a passkey (Settings, Account & Security) makes backup codes first and shows them once. The last passkey cannot be removed while it is the only second step. "Sign In With A Passkey" (no password) still works, but with two-step on it requires the device's own fingerprint, face or PIN check. Google sign-in would skip the second step: do not set the Google keys without adding a hook for it. Passkeys are tied to the address in `BETTER_AUTH_URL`.
 - The Overview agent is hidden from the menu (code kept; see the note in `Layout.jsx` to restore it). The app opens on Projects.
-  Tests: `scripts/test-projects.cjs`, `scripts/test-projects-v2.cjs` (types, favorites, usage, utilization; no network), `scripts/test-projects-route.cjs`, `scripts/render-test-projects.mjs` (add `--live` for the real account), and `scripts/test-passkey-second-step.mjs` (needs the local test database, see its first lines).
-- The Digits, ClickUp, GHL and Make.com agent pages were removed (2026-10-23); `ghl.js`, `clickup.js` and the status probes remain.
+  Tests: `scripts/test-projects.cjs`, `scripts/test-projects-v2.cjs` (types, favorites, usage, utilization; no network), `scripts/test-projects-route.cjs`, `scripts/render-test-projects.mjs` (add `--live` for the real account), and `scripts/test-passkey-second-step.mjs` (needs the local test database, see its first lines), and `scripts/test-spec-progress.cjs`.
+- The Digits, ClickUp, GHL and Make.com agent pages were removed (2026-10-23). On 2026-11-16 the Digits, GHL and ClickUp server code, status probes, chat tools and the Financials, Cash Flow and Re-categorize Income screens were removed too. Make.com and Facebook Ads remain.
+- MCP endpoint: `POST /mcp` (`server/routes/mcp.js`), tool `calculate_texas_sales_tax`. Off (404) until the Worker secret `MCP_API_KEY` is set (32 characters or longer); one request at a time (batches refused); callers send `Authorization: Bearer <key>`. Smoke test: `node scripts/mcp-smoke.cjs`.
+- Spec progress: the `spec-progress` skill (`~/.claude/skills/spec-progress/SKILL.md`) grades each app's spec against its code and writes `server/data/spec-progress.json`; `server/lib/specProgress.js` adds `specProgress` to each Cloudflare project by name (or alias) and every Cloudflare Health card shows the bar. Group By on that tab also offers last deployed (default), health, traffic, error rate, response speed and spec complete (`DATA_GROUPS` in `client/src/components/projects/shared.jsx`).
 - `scripts/wr.mjs` reads a Cloudflare token from `~/.config/s2-projects/cf-deploy-token.txt` (or `S2_CF_TOKEN_FILE`); mint a short-lived one to deploy, delete it after.
 
 ### Railway (deleted 2026-10-23)
@@ -56,31 +58,6 @@ Brandon's standing authorization for S2 Command: deploy finished work to product
   checksum manifest, taken at the cutover moment). The leftover legacy `/data/tokens.json` on the Railway volume was not backed up
   (unused by the code).
 - `server/index.js` and `railway.toml` remain only as the Node reference entry and history.
-
-## Digits integration -- what the app can and cannot write
-
-The app connects to Digits via OAuth with scope `ledger:read source:sync`
-([server/routes/digitsOAuth.js](server/routes/digitsOAuth.js)). Know the limits before
-promising a write:
-
-- **`ledger:read`** -- read P&L, transactions, categories, parties. All the reporting
-  (Cash Flow, Software Subscriptions, Overview analyst) rides on this.
-- **`source:sync`** -- write/upsert transactions into a data source **the app owns**
-  (the "S2 Command Income Adjustments" source, `ensureS2Source` in
-  [server/routes/digits.js](server/routes/digits.js)). It is **NOT** a ledger-write
-  scope. It **cannot** edit or recategorize a transaction that belongs to another source
-  (e.g. a bank/credit-card feed like Chase Card 8119). There is no in-place edit of
-  existing ledger entries.
-- **The claude.ai "Digits" MCP connector is read-only** -- query/list/statement tools
-  only, no update tool. Do not tell the user it can recategorize; it cannot.
-
-Consequence: to "recategorize" you either (a) edit in the Digits UI (the only real fix
-for bank-fed transactions like Google Fi -> Internet & Phone), or (b) use the
-replace-and-delete workaround the income feature uses -- write corrected replacements
-into our source, then the user bulk-deletes the native originals
-([server/routes/digitsRecat.js](server/routes/digitsRecat.js)). (b) is built for Stripe
-income only (income labels + Stripe clearing/fees, no expense labels) and must NOT be
-used on bank-fed card charges -- recreating + deleting them breaks card reconciliation.
 
 ## Graphics, Icons, Logos & Video Generation
 
