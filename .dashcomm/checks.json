@@ -1,36 +1,79 @@
 {
   "workers": 2,
-  "requiredOs": ["linux"],
+  "requiredOs": [
+    "linux"
+  ],
   "steps": [
     {
       "id": "install-server",
       "label": "Install server packages",
       "command": "npm",
-      "args": ["install", "--no-audit", "--no-fund"]
+      "args": [
+        "install",
+        "--no-audit",
+        "--no-fund"
+      ]
     },
     {
       "id": "install-client",
       "label": "Install client packages",
       "command": "npm",
-      "args": ["install", "--prefix", "client", "--no-audit", "--no-fund"]
+      "args": [
+        "install",
+        "--prefix",
+        "client",
+        "--no-audit",
+        "--no-fund"
+      ]
     },
     {
       "id": "build",
       "label": "Build the client",
       "command": "npm",
-      "args": ["run", "build"]
+      "args": [
+        "run",
+        "build"
+      ]
     },
     {
       "id": "mcp-smoke",
       "label": "MCP endpoint smoke test",
       "command": "node",
-      "args": ["scripts/mcp-smoke.cjs"]
+      "args": [
+        "scripts/mcp-smoke.cjs"
+      ]
     },
     {
       "id": "sales-tax-calc",
       "label": "Sales tax calculation test",
       "command": "node",
-      "args": ["scripts/test-sales-tax-calc.cjs"]
+      "args": [
+        "scripts/test-sales-tax-calc.cjs"
+      ]
+    },
+    {
+      "id": "projects-unit",
+      "label": "Projects page unit tests",
+      "command": "node",
+      "args": [
+        "scripts/test-projects.cjs"
+      ]
+    },
+    {
+      "id": "projects-v2",
+      "label": "Projects page v2 tests (types, favorites, usage)",
+      "command": "node",
+      "args": [
+        "scripts/test-projects-v2.cjs"
+      ]
+    },
+    {
+      "id": "spec-progress",
+      "label": "Spec percent matching test",
+      "command": "node",
+      "args": [
+        "scripts/test-spec-progress.cjs"
+      ]
     }
   ]
 }
