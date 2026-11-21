@@ -111,6 +111,44 @@ const PAID_ALLOWANCE = {
   d1Bytes: 5 * 1024 ** 3,
 };
 
+// What Cloudflare charges per unit once a number passes the included amount (Workers Paid, dollars). These are published list
+// prices kept here as estimates: usage over the included amount is billed, not blocked, and the real bill can differ a little
+// (R2 and D1 bill the monthly average of storage, this uses today's size). Check Cloudflare's pricing page if they look off.
+const OVERAGE_RATES = {
+  requestsPerMillion: 0.3,
+  cpuMsPerMillion: 0.02,
+  r2PerGb: 0.015,
+  d1PerGb: 0.75,
+  kvPerGb: 0.5,
+};
+
+const GB = 1024 ** 3;
+const round2 = (n) => Math.round(n * 100) / 100;
+
+/**
+ * Pure: how far each Cloudflare number is past what the plan includes and a rough dollar estimate for the extra.
+ * Returns { items: { requests|cpu|r2|d1|kv: { over, usd } }, totalUsd }. `over` is in the item's own unit (count, ms or bytes);
+ * an item at or under its included amount has over 0 and usd 0.
+ */
+function estimateOverage({ requests = 0, cpuMs = 0, r2Bytes = 0, d1Bytes = 0, kvBytes = 0 }, allowance = PAID_ALLOWANCE, rates = OVERAGE_RATES) {
+  const over = (used, limit) => Math.max(0, num(used) - limit);
+  const items = {
+    requests: { over: over(requests, allowance.requestsPerMonth) },
+    cpu: { over: over(cpuMs, allowance.cpuMsPerMonth) },
+    r2: { over: over(r2Bytes, allowance.r2Bytes) },
+    d1: { over: over(d1Bytes, allowance.d1Bytes) },
+    kv: { over: over(kvBytes, allowance.kvBytes) },
+  };
+  items.requests.usd = (items.requests.over / 1e6) * rates.requestsPerMillion;
+  items.cpu.usd = (items.cpu.over / 1e6) * rates.cpuMsPerMillion;
+  items.r2.usd = (items.r2.over / GB) * rates.r2PerGb;
+  items.d1.usd = (items.d1.over / GB) * rates.d1PerGb;
+  items.kv.usd = (items.kv.over / GB) * rates.kvPerGb;
+  let total = 0;
+  for (const k of Object.keys(items)) { total += items[k].usd; items[k].usd = round2(items[k].usd); }
+  return { items, totalUsd: round2(total) };
+}
+
 function monthStart(now = Date.now()) {
   const d = new Date(now);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
@@ -182,6 +220,10 @@ async function buildCloudflareUtilization({ token, accountId, now = Date.now() }
     plan: { name: process.env.CF_PLAN_NAME || null, assumed: 'Workers Paid', allowance: PAID_ALLOWANCE },
     monthStart: start,
     month,
+    overage: estimateOverage({
+      requests: month.total.requests, cpuMs: month.total.cpuMs,
+      r2Bytes: sum(r2Bytes), d1Bytes: sum(d1Bytes), kvBytes: sum(kvBytes),
+    }),
     storage: {
       kv: { bytes: sum(kvBytes), keys: sum(kvKeys), items: top(kvNs.map((n) => ({ name: n.title, bytes: kvBytes.get(n.id) || 0 }))) },
       r2: { bytes: sum(r2Bytes), objects: sum(r2Objects), items: top(r2Buckets.map((b) => ({ name: b.name, bytes: r2Bytes.get(b.name) || 0, objects: r2Objects.get(b.name) || 0 }))) },
@@ -259,4 +301,4 @@ async function getUtilization({ force = false } = {}) {
   return { ...report, cached: false };
 }
 
-module.exports = { getProjectUsage, getUtilization, buildUsage, buildCloudflareUtilization, buildPlanetScaleUtilization, summarizeMonth, fillSlots, hourSlots, daySlots, monthStart, PAID_ALLOWANCE, NAME_RE };
+module.exports = { getProjectUsage, getUtilization, buildUsage, buildCloudflareUtilization, buildPlanetScaleUtilization, summarizeMonth, fillSlots, hourSlots, daySlots, monthStart, PAID_ALLOWANCE, OVERAGE_RATES, estimateOverage, NAME_RE };

@@ -74,6 +74,14 @@
       "args": [
         "scripts/test-spec-progress.cjs"
       ]
+    },
+    {
+      "id": "overage",
+      "label": "Utilization overage estimate test",
+      "command": "node",
+      "args": [
+        "scripts/test-overage.cjs"
+      ]
     }
   ]
 }

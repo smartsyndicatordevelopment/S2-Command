@@ -13,11 +13,17 @@ const pctOf = (used, limit) => (limit > 0 ? (used / limit) * 100 : null);
 const plural = (n, word) => `${fmtNumber(n)} ${word}${n === 1 ? '' : 's'}`;
 const pctText = (p) => (p == null ? '' : p < 0.1 && p > 0 ? 'under 0.1%' : `${p < 10 ? p.toFixed(1) : Math.round(p)}%`);
 
-// A labelled bar: used of allowance. The words carry the meaning; the color only repeats it (purple, amber from 75%, red from 90%).
-function Meter({ label, used, limit, format, note }) {
+const fmtUsd = (n) => (n > 0 && n < 0.01 ? 'under $0.01' : `$${n.toFixed(2)}`);
+
+// A labelled bar: used of what the plan includes. Under the included amount the bar is purple (amber from 75% as a heads-up).
+// Past it the bar shows the included part in purple and the extra in amber: the extra is pay-as-you-go, billed by use, not
+// blocked, so it is never red. `overUsd` is the rough cost of the extra, when it can be worked out.
+function Meter({ label, used, limit, format, note, overUsd }) {
   const p = pctOf(used, limit);
-  const tone = p == null ? 'bg-purple' : p >= 90 ? 'bg-red' : p >= 75 ? 'bg-yellow' : 'bg-purple';
-  const level = p == null ? '' : p >= 100 ? ' (over what the plan includes, so the extra is billed)' : p >= 90 ? ' (close to the limit)' : p >= 75 ? ' (getting high)' : '';
+  const over = p != null && p > 100;
+  const tone = p != null && p >= 75 ? 'bg-yellow' : 'bg-purple';
+  const level = p == null || over ? '' : p >= 75 ? ' (getting close to what the plan includes)' : '';
+  const includedShare = over ? (limit / used) * 100 : 0;
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -25,12 +31,26 @@ function Meter({ label, used, limit, format, note }) {
         <span className="text-xs text-muted">
           <span className="text-white">{format(used)}</span>
           {limit ? ` of ${format(limit)} included` : ''}
-          {p != null && <span className="text-white">{` · ${pctText(p)} used${level}`}</span>}
+          {p != null && !over && <span className="text-white">{` · ${pctText(p)} used${level}`}</span>}
+          {over && (
+            <span className="text-yellow">
+              {overUsd != null ? ` · ${format(used - limit)} over, billed by use: about ${fmtUsd(overUsd)} extra` : ` · ${format(used - limit)} over what the plan includes`}
+            </span>
+          )}
         </span>
       </div>
       {limit ? (
-        <div className="mt-1.5 h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--c-bar-track)' }} role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(p))}>
-          <div className={`h-full rounded-full ${tone}`} style={{ width: `${Math.min(100, Math.max(p > 0 ? 1 : 0, p))}%` }} />
+        <div className="mt-1.5 h-2 rounded-full overflow-hidden flex" style={{ backgroundColor: 'var(--c-bar-track)' }} role="progressbar" aria-label={label}
+          aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(p))}
+          aria-valuetext={over ? `${format(limit)} included used, plus ${format(used - limit)} over` : `${pctText(p)} of what the plan includes`}>
+          {over ? (
+            <>
+              <div className="h-full bg-purple" style={{ width: `${includedShare}%` }} />
+              <div className="h-full bg-yellow" style={{ width: `${100 - includedShare}%` }} />
+            </>
+          ) : (
+            <div className={`h-full rounded-full ${tone}`} style={{ width: `${Math.min(100, Math.max(p > 0 ? 1 : 0, p))}%` }} />
+          )}
         </div>
       ) : null}
       {note && <p className="text-[11px] text-muted mt-1">{note}</p>}
@@ -92,6 +112,7 @@ function CloudflareSection({ cf }) {
     return <Card><SectionTitle title="Cloudflare" /><p className="text-sm text-muted">Cloudflare did not answer just now. Press Refresh Now to try again.</p></Card>;
   }
   const a = cf.plan.allowance;
+  const ov = cf.overage || null;
   const now = new Date();
   const dayOfMonth = now.getUTCDate() + now.getUTCHours() / 24;
   const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
@@ -103,14 +124,21 @@ function CloudflareSection({ cf }) {
   return (
     <Card className="space-y-6">
       <SectionTitle title="Cloudflare" sub={`${planLine} Monthly numbers count from ${monthName} 1 (UTC). "Included" is what the plan covers before extra charges.`} />
+      {ov && (
+        <p className="text-sm text-white" role="status">
+          {ov.totalUsd > 0
+            ? <>Estimated extra this month: <span className="text-yellow font-semibold">about {fmtUsd(ov.totalUsd)}</span> on top of the plan price. <span className="text-muted">Amber bars are over what the plan includes. That part is billed by use, not blocked.</span></>
+            : <>Everything is within what the plan includes, so no extra charges are expected this month.</>}
+        </p>
+      )}
       <div className="grid gap-5 lg:grid-cols-2">
-        <Meter label="Requests This Month" used={cf.month.total.requests} limit={a.requestsPerMonth} format={fmtCompact}
+        <Meter label="Requests This Month" used={cf.month.total.requests} limit={a.requestsPerMonth} format={fmtCompact} overUsd={ov?.items.requests.usd}
           note={`At this pace: about ${fmtCompact(pace(cf.month.total.requests))} by the end of the month. ${fmtNumber(cf.month.total.errors)} ended in an error.`} />
-        <Meter label="Processor Time This Month" used={cf.month.total.cpuMs} limit={a.cpuMsPerMonth} format={(v) => `${fmtCompact(v)} ms`}
+        <Meter label="Processor Time This Month" used={cf.month.total.cpuMs} limit={a.cpuMsPerMonth} format={(v) => `${fmtCompact(v)} ms`} overUsd={ov?.items.cpu.usd}
           note={`The time your code spends working, added up across every request. At this pace: about ${fmtCompact(pace(cf.month.total.cpuMs))} ms by the end of the month.`} />
-        <Meter label="File Storage (R2)" used={cf.storage.r2.bytes} limit={a.r2Bytes} format={fmtBytes} note={`${plural(cf.storage.r2.objects, 'file')} in ${plural(cf.counts.r2, 'bucket')}.`} />
-        <Meter label="Small Database Storage (D1)" used={cf.storage.d1.bytes} limit={a.d1Bytes} format={fmtBytes} note={`${plural(cf.counts.d1, 'database')}.`} />
-        <Meter label="Key-Value Storage (KV)" used={cf.storage.kv.bytes} limit={a.kvBytes} format={fmtBytes} note={`${plural(cf.storage.kv.keys, 'key')} in ${plural(cf.counts.kv, 'store')}.`} />
+        <Meter label="File Storage (R2)" used={cf.storage.r2.bytes} limit={a.r2Bytes} format={fmtBytes} overUsd={ov?.items.r2.usd} note={`${plural(cf.storage.r2.objects, 'file')} in ${plural(cf.counts.r2, 'bucket')}.`} />
+        <Meter label="Small Database Storage (D1)" used={cf.storage.d1.bytes} limit={a.d1Bytes} format={fmtBytes} overUsd={ov?.items.d1.usd} note={`${plural(cf.counts.d1, 'database')}.`} />
+        <Meter label="Key-Value Storage (KV)" used={cf.storage.kv.bytes} limit={a.kvBytes} format={fmtBytes} overUsd={ov?.items.kv.usd} note={`${plural(cf.storage.kv.keys, 'key')} in ${plural(cf.counts.kv, 'store')}.`} />
       </div>
       <dl className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4 pt-4 border-t border-border">
         <Count label="Workers" value={cf.counts.workers} />
@@ -246,7 +274,7 @@ export default function Utilization() {
   const totalStorage = cfStorage + (ps ? ps.cluster.totalBytes : 0);
   const reqPct = cf ? pctOf(cf.month.total.requests, cf.plan.allowance.requestsPerMonth) : null;
   const cpuPct = cf ? pctOf(cf.month.total.cpuMs, cf.plan.allowance.cpuMsPerMonth) : null;
-  const accent = (p) => (p == null ? 'white' : p >= 90 ? 'red' : p >= 75 ? 'yellow' : 'green');
+  const accent = (p) => (p == null ? 'white' : p >= 75 ? 'yellow' : 'green');
 
   return (
     <div className="space-y-6">
@@ -256,9 +284,9 @@ export default function Utilization() {
         <StatCard label="Storage In Use" value={fmtBytes(totalStorage)} accent="purple"
           sub={`${fmtBytes(cfStorage)} on Cloudflare, ${ps ? fmtBytes(ps.cluster.totalBytes) : 'n/a'} in databases`} />
         <StatCard label="Requests This Month" value={cf ? fmtCompact(cf.month.total.requests) : 'n/a'} accent={accent(reqPct)}
-          sub={cf ? `${pctText(reqPct)} of the ${fmtCompact(cf.plan.allowance.requestsPerMonth)} included` : 'Cloudflare is not connected'} />
+          sub={cf ? (reqPct > 100 ? `Over the ${fmtCompact(cf.plan.allowance.requestsPerMonth)} included, billed by use` : `${pctText(reqPct)} of the ${fmtCompact(cf.plan.allowance.requestsPerMonth)} included`) : 'Cloudflare is not connected'} />
         <StatCard label="Processor Time This Month" value={cf ? `${fmtCompact(cf.month.total.cpuMs)} ms` : 'n/a'} accent={accent(cpuPct)}
-          sub={cf ? `${pctText(cpuPct)} of the ${fmtCompact(cf.plan.allowance.cpuMsPerMonth)} ms included` : 'Cloudflare is not connected'} />
+          sub={cf ? (cpuPct > 100 ? `Over the ${fmtCompact(cf.plan.allowance.cpuMsPerMonth)} ms included, about ${fmtUsd(cf.overage?.items.cpu.usd || 0)} extra` : `${pctText(cpuPct)} of the ${fmtCompact(cf.plan.allowance.cpuMsPerMonth)} ms included`) : 'Cloudflare is not connected'} />
         <StatCard label="This App's Database" value={ps ? fmtBytes(ps.database.bytes) : 'n/a'} accent="white"
           sub={ps?.connections ? `${ps.connections.open} of ${ps.connections.max} connections open` : 'PlanetScale'} />
       </div>
