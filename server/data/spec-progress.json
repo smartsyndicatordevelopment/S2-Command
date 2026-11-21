@@ -1,4 +1,135 @@
 {
-  "generatedAt": null,
-  "apps": []
+  "generatedAt": "2026-11-21T05:00:00.000Z",
+  "apps": [
+    {
+      "name": "S2 Command",
+      "aliases": ["s2-command", "s2-command-dev"],
+      "percent": 92,
+      "done": 27.5,
+      "total": 30,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "CLAUDE.md and HANDOFF-projects-utilization.md",
+      "summary": "Most listed features are built and tested; the Make.com agent and Overview agent are not reachable, and several screens have no tests."
+    },
+    {
+      "name": "LeadSifter",
+      "aliases": ["lead-sifter", "lead-sifter-dev", "leadsifter"],
+      "percent": 88,
+      "done": 51,
+      "total": 58,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "SPEC.md",
+      "summary": "Nearly all modules are built and tested; missing are ACH or wire collection, extra roles, wet-ink signing, dedicated email IP pools, plan-gated limits and Schedule K-1 generation."
+    },
+    {
+      "name": "InboxHelm",
+      "aliases": ["inboxhelm", "inboxhelm-web", "inboxhelm-rebuild-dev", "inboxhelm-texts", "inboxhelm-texts-dev"],
+      "percent": 91,
+      "done": 29,
+      "total": 32,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "SPEC.md and WEB_SPEC.md",
+      "summary": "Nearly everything is built and live; gaps are the DashComm status feed, Web Push and Obsidian saving on web. Passkey and Texts pairing click-throughs are unverified, so this is a little generous."
+    },
+    {
+      "name": "ScopeTask",
+      "aliases": ["scopetask", "scopetask-dev", "scopetask-site", "scope-task"],
+      "percent": 97,
+      "done": 41.5,
+      "total": 43,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "Build-Spec-Claude-Code.md",
+      "summary": "Nearly every ticket is built and tested; gaps are a CI-enforced speed budget for all screens, a ClickUp import not yet proven live, and Open in Claude only copying the request."
+    },
+    {
+      "name": "Tabor",
+      "aliases": ["tabor", "tabor-dev"],
+      "percent": 90,
+      "done": 36,
+      "total": 40,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "docs/specs/app-spec.md",
+      "summary": "Most of the app is built and tested; gaps are the voice coach switched off, Premium never tried with a real purchase, partial coaching and no web push notifications."
+    },
+    {
+      "name": "FerretBooks",
+      "aliases": ["ferretbooks-app", "ferretbooks-dev", "ferretbooks-staging", "ferretbooks-maintenance", "ferretbooks-site", "ferretbooks"],
+      "percent": 95,
+      "done": 30.5,
+      "total": 32,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "SPEC.md",
+      "summary": "Nearly every spec item is built and tested; gaps are an unverified cash versus accrual toggle, stronger-model escalation routing and a Plaid sandbox seed script."
+    },
+    {
+      "name": "Famtinerary",
+      "aliases": ["famtinerary", "famtinerary-dev"],
+      "percent": 94,
+      "done": 37.5,
+      "total": 40,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "SPEC.md",
+      "summary": "Nearly all built and tested; missing are row level security and the nightly drive precompute, and error tracking, analytics and weather are built but not switched on in production."
+    },
+    {
+      "name": "ThriveMapper_3.0",
+      "aliases": ["thrivemapper", "thrivemapper-dev", "thrivemapper-3-0"],
+      "percent": 86,
+      "done": 27.5,
+      "total": 32,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "docs/blueprint.md",
+      "summary": "Core goals, energy, journal, AI coach, templates and role dashboards are built; Google and Apple sign-in and password reset are missing, and there are no automated tests."
+    },
+    {
+      "name": "WardenKey",
+      "aliases": ["wardenkey-sync", "wardenkey", "wardenkey-notify"],
+      "percent": 78,
+      "done": 36,
+      "total": 46,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "SPEC.md",
+      "summary": "Core vault, sync, extension and host are built; missing are one-time-code storage, Chrome and generic CSV import, sign-up flows, attachments, a global hotkey and a light theme."
+    },
+    {
+      "name": "GoHighLevel Bridge",
+      "aliases": ["ghl-bridge", "gohighlevel-bridge"],
+      "percent": 96,
+      "done": 13.5,
+      "total": 14,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "README.md",
+      "summary": "Nearly everything described is built and wired; the token refresh on expiry has no test."
+    },
+    {
+      "name": "Fal.ai Bridge",
+      "aliases": ["fal-bridge", "fal.ai-bridge"],
+      "percent": 80,
+      "done": 12,
+      "total": 15,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "README.md",
+      "summary": "Both endpoints, auth, retries and deploy config are in place; there are no automated tests."
+    },
+    {
+      "name": "Frost FM",
+      "aliases": ["frost-fm", "frost-fm-dev"],
+      "percent": 95,
+      "done": 19,
+      "total": 20,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "docs/SPEC.md",
+      "summary": "Every v0.1.0 item is built and wired in; only the player queue prefetch and keyboard shortcuts lack tests."
+    },
+    {
+      "name": "Automate With Brandon",
+      "aliases": ["automatewithbrandon", "automate-with-brandon"],
+      "percent": 83,
+      "done": 7.5,
+      "total": 9,
+      "checkedAt": "2026-11-21T05:00:00.000Z",
+      "specSource": "README.md",
+      "summary": "Core site, playbook, resources, redirects and tracking are live; the workbook email capture only redirects. Small spec of 9 items."
+    }
+  ]
 }
