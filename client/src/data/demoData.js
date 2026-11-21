@@ -200,9 +200,10 @@ const DEMO_UTILIZATION = {
   cloudflare: {
     configured: true,
     plan: { name: null, assumed: 'Workers Paid', allowance: { requestsPerMonth: 10000000, cpuMsPerMonth: 30000000, kvBytes: GB, r2Bytes: 10 * GB, d1Bytes: 5 * GB } },
+    overage: { items: { requests: { over: 0, usd: 0 }, cpu: { over: 4600000, usd: 0.09 }, r2: { over: 14 * GB, usd: 0.21 }, d1: { over: 0, usd: 0 }, kv: { over: 0, usd: 0 } }, totalUsd: 0.3 },
     monthStart: new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), 1)).toISOString(),
     month: {
-      total: { requests: 1840000, errors: 4100, subrequests: 5200000, cpuMs: 7900000 },
+      total: { requests: 1840000, errors: 4100, subrequests: 5200000, cpuMs: 34600000 },
       busiest: [
         { name: 'cedar-api', requests: 910000, errors: 380, subrequests: 2100000, cpuMs: 3100000 },
         { name: 'acme-marketing-site', requests: 402000, errors: 12, subrequests: 0, cpuMs: 610000 },
@@ -212,7 +213,7 @@ const DEMO_UTILIZATION = {
     },
     storage: {
       kv: { bytes: 0.04 * GB, keys: 1280, items: [{ name: 'sessions', bytes: 0.04 * GB }] },
-      r2: { bytes: 8.1 * GB, objects: 4120, items: [{ name: 'demo-media', bytes: 7.4 * GB, objects: 3100 }, { name: 'demo-backups', bytes: 0.7 * GB, objects: 1020 }] },
+      r2: { bytes: 24 * GB, objects: 4120, items: [{ name: 'demo-media', bytes: 22.9 * GB, objects: 3100 }, { name: 'demo-backups', bytes: 1.1 * GB, objects: 1020 }] },
       d1: { bytes: 0.2 * GB, items: [{ name: 'demo-db', bytes: 0.2 * GB }] },
     },
     counts: { workers: 11, pages: 0, hyperdrive: 4, kv: 1, r2: 2, d1: 1, queues: 2 },
